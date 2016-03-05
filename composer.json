@@ -1,0 +1,23 @@
+{
+    "name": "flying/wordpress-skeleton-tools",
+    "description": "Composer plugin for Wordpress skeleton project",
+    "type": "composer-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Alexander Grimalovsky",
+            "email": "alexander.grimalovsky@gmail.com"
+        }
+    ],
+    "require": {
+        "composer-plugin-api": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Flying\\Composer\\Plugin\\": ""
+        }
+    },
+    "extra": {
+        "class": "Flying\\Composer\\Plugin\\WordpressSkeletonToolsPlugin"
+    }
+}
