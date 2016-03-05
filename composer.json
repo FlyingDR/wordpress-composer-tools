@@ -19,5 +19,8 @@
     },
     "extra": {
         "class": "Flying\\Composer\\Plugin\\WordpressSkeletonToolsPlugin"
+    },
+    "require-dev": {
+        "composer/composer": "dev-master"
     }
 }
