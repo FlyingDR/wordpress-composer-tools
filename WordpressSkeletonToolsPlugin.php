@@ -70,6 +70,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     public function onCreateProject()
     {
         $this->modifyComposer();
+        $this->createWordpressConfig();
     }
 
     /**
@@ -83,7 +84,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
         try {
             $io = $this->getIO();
             if (!$io->isInteractive()) {
-                $io->write('<info>composer.json configuration skipped because running in non-interactive mode. Update it later</info>');
+                $io->write('<info>composer.json configuration is skipped because running in non-interactive mode. Update it later</info>');
                 return;
             }
             $composerConfig = new JsonFile($this->getProjectRoot() . '/composer.json');
@@ -223,6 +224,246 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
 
         }
         return array();
+    }
+
+    /**
+     * Create main wp-config.php and local local-config.php configuration files for Wordpress upon creation of new project
+     */
+    private function createWordpressConfig()
+    {
+        try {
+            $io = $this->getIO();
+            if (!$io->isInteractive()) {
+                $io->write('<info>wp-config.php configuration is skipped because running in non-interactive mode</info>');
+                return;
+            }
+            $configurations = [
+                'global' => [
+                    'file'    => 'wp-config.php',
+                    'entries' => [],
+                ],
+                'local'  => [
+                    'file'    => 'local-config.php',
+                    'entries' => [],
+                ],
+            ];
+            foreach ($configurations as $item) {
+                if (file_exists($this->getProjectRoot() . '/' . $item['file'])) {
+                    $io->write('<comment>' . $item['file'] . ' configuration file is already exists, skipping</comment>');
+                    return;
+                }
+            }
+
+            // Generate keys and salts
+            $keysAndSalts = [
+                'AUTH_KEY',
+                'SECURE_AUTH_KEY',
+                'LOGGED_IN_KEY',
+                'NONCE_KEY',
+                'AUTH_SALT',
+                'SECURE_AUTH_SALT',
+                'LOGGED_IN_SALT',
+                'NONCE_SALT',
+            ];
+            foreach ($keysAndSalts as $key) {
+                $value = '';
+                for ($i = 0; $i < 64; $i++) {
+                    $value .= chr(random_int(33, 126));
+                }
+                $configurations['global']['entries'][$key] = [
+                    'name'     => $key,
+                    'constant' => true,
+                    'value'    => $value,
+                ];
+            }
+
+            // Perform database connection configuration
+            // Database tables prefix should be defined in any way
+            $configurations['global']['entries']['table_prefix'] = [
+                'name'     => 'table_prefix',
+                'constant' => false,
+                'value'    => 'wp_',
+            ];
+            if ($io->askConfirmation('<info>Do you want to configure database connection parameters?</info> <comment>[Y,n]</comment>: ', true)) {
+                $databaseParameters = [
+                    [
+                        'name'      => 'DB_HOST',
+                        'constant'  => true,
+                        'question'  => 'Database hostname',
+                        'default'   => 'localhost',
+                        'validator' => function ($value) {
+                            if (filter_var('http://' . $value . '/', FILTER_VALIDATE_URL) === false) {
+                                throw new \InvalidArgumentException('Invalid database host name');
+                            }
+                            return $value;
+                        }
+                    ],
+                    [
+                        'name'      => 'DB_NAME',
+                        'constant'  => true,
+                        'question'  => 'Database name',
+                        'validator' => function ($value) {
+                            $value = trim($value);
+                            if ($value !== '' && (!preg_match('/^[^\x00\xff\x5c\/\.\:]+$/i', $value))) {
+                                throw new \InvalidArgumentException('Database name can\'t contain special characters');
+                            }
+                            return $value;
+                        }
+                    ],
+                    [
+                        'name'      => 'DB_USER',
+                        'constant'  => true,
+                        'question'  => 'Database user name',
+                        'validator' => function ($value) {
+                            if (strlen($value) > 32) {
+                                throw new \InvalidArgumentException('Database user name can\'t exceed 32 characters');
+                            }
+                            return $value;
+                        }
+                    ],
+                    [
+                        'name'     => 'DB_PASSWORD',
+                        'constant' => true,
+                        'question' => 'Database user password',
+                    ],
+                    [
+                        'name'     => 'DB_CHARSET',
+                        'constant' => true,
+                        'question' => 'Database charset',
+                        'default'  => 'utf8',
+                    ],
+                    [
+                        'name'     => 'DB_COLLATE',
+                        'constant' => true,
+                        'default'  => 'utf8',
+                    ],
+                    [
+                        'name'      => 'table_prefix',
+                        'constant'  => false,
+                        'question'  => 'Database tables prefix',
+                        'default'   => 'wp_',
+                        'target'    => 'global',
+                        'validator' => function ($value) {
+                            if ($value !== '' && substr($value, -1) !== '_') {
+                                $value .= '_';
+                            }
+                            return $value;
+                        }
+                    ],
+                ];
+                foreach ($databaseParameters as $entry) {
+                    $default = array_key_exists('default', $entry) ? $entry['default'] : null;
+                    if (array_key_exists('question', $entry)) {
+                        $question = $entry['question'] . ($default !== null ? ' [<comment>' . $default . '</comment>]' : '') . ': ';
+                        if (array_key_exists('validator', $entry)) {
+                            $value = $io->askAndValidate($question, $entry['validator'], null, $default);
+                        } else {
+                            $value = $io->ask($question, $default);
+                        }
+                    } else {
+                        $value = $default;
+                    }
+                    $result = [
+                        'name'     => $entry['name'],
+                        'constant' => $entry['constant'],
+                        'value'    => (string)$value,
+                    ];
+                    $configurations[array_key_exists('target', $entry) ? $entry['target'] : 'local']['entries'][$entry['name']] = $result;
+                }
+            }
+
+            // Site URL configuration
+            if ($io->askConfirmation('<info>Do you want to configure site URL parameters?</info> <comment>[Y,n]</comment>: ', true)) {
+                $siteUrl = $io->askAndValidate('Enter URL of home page of this Wordpress site: ', function ($value) use ($io) {
+                    if (strpos($value, '://') === false) {
+                        $value = 'http://' . $value;
+                    }
+                    $p = parse_url($value);
+                    if (!is_array($p)) {
+                        throw new \InvalidArgumentException('Invalid URL');
+                    }
+                    if (!array_key_exists('host', $p)) {
+                        throw new \InvalidArgumentException('Invalid URL, no host name is found');
+                    }
+                    if (array_key_exists('query', $p)) {
+                        throw new \InvalidArgumentException('Invalid URL, no query string should be included');
+                    }
+                    if (array_key_exists('user', $p) || array_key_exists('pass', $p)) {
+                        throw new \InvalidArgumentException('Invalid URL, no access credentials should be included');
+                    }
+                    if (!array_key_exists('scheme', $p)) {
+                        $p['scheme'] = 'http';
+                    }
+                    if (array_key_exists('path', $p)) {
+                        $p['path'] = rtrim($p['path'], '/');
+                    }
+                    return $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : '') . (array_key_exists('path', $p) ? ':' . $p['path'] : '/');
+                });
+                $configurations['local']['entries']['WP_SITEURL'] = [
+                    'name'     => 'WP_SITEURL',
+                    'constant' => true,
+                    'value'    => $siteUrl,
+                ];
+                $p = parse_url($siteUrl);
+                $configurations['local']['entries']['WP_HOME'] = [
+                    'name'     => 'WP_HOME',
+                    'constant' => true,
+                    'value'    => $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : ''),
+                ];
+            }
+
+            // Generate configuration files
+            $executor = new ProcessExecutor($io);
+            foreach ($configurations as $target => $configuration) {
+                $templatePath = __DIR__ . '/templates/' . $configuration['file'] . '.tpl';
+                $template = null;
+                if (is_file($templatePath)) {
+                    $template = file_get_contents($templatePath);
+                }
+                if (!is_string($template) || $template === '') {
+                    $template = '<?php' . "\n";
+                }
+                foreach ($configuration['entries'] as $entry) {
+                    $name = $entry['name'];
+                    $value = $entry['value'];
+                    if (is_string($value)) {
+                        $value = "'" . addslashes($entry['value']) . "'";
+                    } elseif ($value === null) {
+                        $value = 'null';
+                    } elseif ($value === true) {
+                        $value = 'true';
+                    } elseif ($value === false) {
+                        $value = 'false';
+                    }
+                    if ($entry['constant']) {
+                        $code = sprintf("define('%s', %s);", $name, $value);
+                    } else {
+                        $code = sprintf("$%s = %s;", $name, $value);
+                    }
+                    $template = preg_replace('/\/\*\s*\{\s*' . $name . '\s*\}\s*\*\//usi', $code, $template);
+                }
+                $template = preg_replace('/\/\*\s*\{\s*.+?\s*\}\s*\*\//usi', '', $template);
+                if ($target === 'local') {
+                    // There may be missed entries into local configuration file
+                    $template = preg_replace('/(\r?\n){2,}/i', "\n\n", $template);
+                }
+                $configPath = $this->getProjectRoot() . '/' . $configuration['file'];
+                file_put_contents($configPath, $template);
+                if (!file_exists($configPath)) {
+                    throw new \RuntimeException('Failed to write ' . $configuration['file'] . ' configuration file');
+                }
+                $tmp = tempnam(sys_get_temp_dir(), 'wpskt');
+                $exitcode = $executor->execute(sprintf('%s -l %s > %s', PHP_BINARY, escapeshellarg($configPath), $tmp));
+                unlink($tmp);
+                if ($exitcode !== 0) {
+                    unlink($configPath);
+                    throw new \RuntimeException('Failed to generate ' . $configuration['file'] . ' configuration file');
+                }
+            }
+            $io->write('<info>Wordpress configuration files are successfully created</info>');
+        } catch (\Exception $e) {
+            $this->getIO()->writeError(sprintf('<error>Wordpress configuration files generation failed: %s</error>', $e->getMessage()));
+        }
     }
 
     /**
