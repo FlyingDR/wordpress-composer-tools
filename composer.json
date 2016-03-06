@@ -21,6 +21,6 @@
         "class": "Flying\\Composer\\Plugin\\WordpressSkeletonToolsPlugin"
     },
     "require-dev": {
-        "composer/composer": "dev-master"
+        "composer/composer": "^1.0.0-beta"
     }
 }
