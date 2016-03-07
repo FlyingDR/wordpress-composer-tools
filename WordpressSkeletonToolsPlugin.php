@@ -264,6 +264,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                 $io->write('<comment>composer.json is cleaned up, but not configured because installation is running in non-interactive mode. You need to configure it by yourself</comment>');
             }
 
+            $gitIgnore = ['', '# Directories for Wordpress plugins and themes controlled by Composer'];
             // Setup Wordpress directories and Wordpress installers paths
             if (!array_key_exists('extra', $config)) {
                 $config['extra'] = [];
@@ -288,10 +289,18 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
             foreach (self::$installerPaths as $type => $dir) {
                 $path = sprintf('%s/%s/{$name}', $directories['content'], $dir);
                 $config['extra']['installer-paths'][$path] = [$type];
+                $gitIgnore[] = sprintf('/%s/%s', $directories['content'], $dir);
             }
 
             $composerConfig->write($config);
             $io->write('<info>composer.json is successfully updated</info>');
+
+            // Create / update .gitignore
+            $gitIgnorePath = $this->getProjectRoot() . '/.gitignore';
+            if (!file_exists($gitIgnorePath)) {
+                file_put_contents($gitIgnorePath, "\n");
+            }
+            file_put_contents($gitIgnorePath, implode("\n", $gitIgnore), FILE_APPEND);
         } catch (\Exception $e) {
             $this->getIO()->writeError('composer.json configuration failed due to exception: ' . $e->getMessage());
         }
