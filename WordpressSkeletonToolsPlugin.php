@@ -343,7 +343,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     }
 
     /**
-     * Create main wp-config.php and local local-config.php configuration files for Wordpress upon creation of new project
+     * Create Wordpress configuration files upon creation of new project
      */
     private function createWordpressConfig()
     {
@@ -515,12 +515,16 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     ];
                 }
             } else {
-                $io->write('<comment>Wordpress configuration files are created, but no details was configured because installation is running in non-interactive mode. You need to review and update it by yourself</comment>');
+                $io->write('<comment>Wordpress configuration file is created, but no details was configured because installation is running in non-interactive mode. You need to review and update it by yourself</comment>');
             }
 
             // Generate configuration files
             $executor = new ProcessExecutor($io);
             foreach ($this->configurations as $target => $configuration) {
+                if ($target === 'local' && !$io->isInteractive()) {
+                    // Local configuration is useless without interactive questionnaire
+                    continue;
+                }
                 $templatePath = __DIR__ . '/templates/' . $configuration['file'] . '.tpl';
                 $template = null;
                 if (is_file($templatePath)) {
