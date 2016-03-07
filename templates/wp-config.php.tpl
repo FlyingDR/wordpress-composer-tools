@@ -6,7 +6,7 @@ if (file_exists(__DIR__ . '/local-config.php')) {
 }
 
 // Custom MU-Plugin Directory
-define('WPMU_PLUGIN_DIR', __DIR__ . '/wp-content/mu-plugins');
+define('WPMU_PLUGIN_DIR', __DIR__ . '//*{wordpress-content-dir}*//composer-mu-plugins');
 
 // Authentication Unique Keys and Salts.
 /*{AUTH_KEY}*/
@@ -35,7 +35,7 @@ define('WPLANG', '');
 
 /** Absolute path to the WordPress directory. */
 if (!defined('ABSPATH')) {
-    define('ABSPATH', __DIR__ . '/wordpress/');
+    define('ABSPATH', __DIR__ . '//*{wordpress-install-dir}*//');
 }
 
 /** Sets up WordPress vars and included files. */

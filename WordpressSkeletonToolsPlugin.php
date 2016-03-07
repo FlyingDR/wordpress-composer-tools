@@ -30,6 +30,42 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
      * @var array
      */
     private $gitConfig;
+    /**
+     * @var array
+     */
+    private static $wordpressDirectories = [
+        'install' => [
+            'key'   => 'wordpress-install-dir',
+            'title' => 'Wordpress installation directory',
+            'path'  => 'wordpress',
+        ],
+        'content' => [
+            'key'   => 'wordpress-content-dir',
+            'title' => 'Wordpress content directory',
+            'path'  => 'content',
+        ],
+    ];
+    /**
+     * @var array
+     */
+    private static $installerPaths = [
+        'type:wordpress-plugin'   => 'composer-plugins',
+        'type:wordpress-muplugin' => 'composer-mu-plugins',
+        'type:wordpress-theme'    => 'composer-themes',
+    ];
+    /**
+     * @var array
+     */
+    private $configurations = [
+        'global' => [
+            'file'    => 'wp-config.php',
+            'entries' => [],
+        ],
+        'local'  => [
+            'file'    => 'local-config.php',
+            'entries' => [],
+        ],
+    ];
 
     /**
      * {@inheritdoc}
@@ -38,37 +74,49 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         $this->composer = $composer;
         $this->io = $io;
-        // This is the only moment when we can override Wordpress installation path
-        if ($this->io->isInteractive()) {
-            $installDir = 'wordpress';
-            $extra = $this->composer->getPackage()->getExtra();
-            if (array_key_exists('wordpress-install-dir', $extra)) {
-                $installDir = $extra['wordpress-install-dir'];
+        // This is the only moment when we can override primary Wordpress directories
+        foreach (self::$wordpressDirectories as $directory) {
+            $this->configureWordpressDir($directory['key'], $directory['title'], $directory['path']);
+        }
+    }
+
+    /**
+     * @param string $key
+     * @param string $title
+     * @param string $default
+     */
+    private function configureWordpressDir($key, $title, $default)
+    {
+        try {
+            $dir = $default;
+            $extra = $this->getComposer()->getPackage()->getExtra();
+            if (array_key_exists($key, $extra)) {
+                $dir = $extra[$key];
             }
-            try {
-                $installDir = $this->io->askAndValidate(sprintf('Wordpress installation directory [<comment>%s</comment>]: ', $installDir), function ($value) use ($installDir) {
+            if ($this->io->isInteractive()) {
+                $dir = $this->io->askAndValidate(sprintf('%s [<comment>%s</comment>]: ', $title, $dir), function ($value) use ($title, $dir) {
                     if ($value === '') {
-                        $value = $installDir;
+                        $value = $dir;
                     }
                     $fs = new Filesystem();
                     if ($fs->isAbsolutePath($value)) {
-                        throw new \InvalidArgumentException('Wordpress installation directory should be defined as relative path');
+                        throw new \InvalidArgumentException(sprintf('%s should be defined as relative path', $title));
                     }
                     $root = $fs->normalizePath($this->getProjectRoot());
                     $path = $fs->normalizePath($this->getProjectRoot() . '/' . $value);
                     if (strpos($path, $root) !== 0) {
-                        throw new \InvalidArgumentException('Wordpress installation directory should reside within project root');
+                        throw new \InvalidArgumentException(sprintf('%s should reside within project root', $title));
                     }
                     if (file_exists($path)) {
-                        throw new \InvalidArgumentException('Wordpress installation directory is already exists');
+                        throw new \InvalidArgumentException(sprintf('%s is already exists', $title));
                     }
                     return $fs->findShortestPath($root, $path, true);
-                }, null, $installDir);
-                $extra['wordpress-install-dir'] = $installDir;
-                $this->composer->getPackage()->setExtra($extra);
-            } catch (\Exception $e) {
-
+                }, null, $dir);
             }
+            $extra[$key] = $dir;
+            $this->getComposer()->getPackage()->setExtra($extra);
+        } catch (\Exception $e) {
+
         }
     }
 
@@ -216,6 +264,33 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
             if ($author) {
                 $config['authors'][] = $parseAuthor($author);
             }
+
+            // Setup Wordpress directories and Wordpress installers paths
+            if (!array_key_exists('extra', $config)) {
+                $config['extra'] = [];
+            }
+            $extra = $this->getComposer()->getPackage()->getExtra();
+            $directories = [];
+            foreach (self::$wordpressDirectories as $type => $directory) {
+                $key = $directory['key'];
+                $dir = $directory['path'];
+                if (array_key_exists($key, $extra)) {
+                    $dir = $extra[$dir];
+                }
+                $directories[$type] = $dir;
+                $config['extra'][$key] = $dir;
+                $this->configurations['global']['entries'][$key] = [
+                    'name'  => $key,
+                    'type'  => 'string',
+                    'value' => $dir,
+                ];
+            }
+            $config['extra']['installer-paths'] = [];
+            foreach (self::$installerPaths as $type => $dir) {
+                $path = sprintf('%s/%s/{$name}', $directories['content'], $dir);
+                $config['extra']['installer-paths'][$path] = [$type];
+            }
+
             $composerConfig->write($config);
             $io->write('<info>composer.json is successfully updated</info>');
         } catch (\Exception $e) {
@@ -270,17 +345,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                 $io->write('<info>wp-config.php configuration is skipped because running in non-interactive mode</info>');
                 return;
             }
-            $configurations = [
-                'global' => [
-                    'file'    => 'wp-config.php',
-                    'entries' => [],
-                ],
-                'local'  => [
-                    'file'    => 'local-config.php',
-                    'entries' => [],
-                ],
-            ];
-            foreach ($configurations as $item) {
+            foreach ($this->configurations as $item) {
                 if (file_exists($this->getProjectRoot() . '/' . $item['file'])) {
                     $io->write('<comment>' . $item['file'] . ' configuration file is already exists, skipping</comment>');
                     return;
@@ -303,25 +368,25 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                 for ($i = 0; $i < 64; $i++) {
                     $value .= chr(random_int(33, 126));
                 }
-                $configurations['global']['entries'][$key] = [
-                    'name'     => $key,
-                    'constant' => true,
-                    'value'    => $value,
+                $this->configurations['global']['entries'][$key] = [
+                    'name'  => $key,
+                    'type'  => 'constant',
+                    'value' => $value,
                 ];
             }
 
             // Perform database connection configuration
             // Database tables prefix should be defined in any way
-            $configurations['global']['entries']['table_prefix'] = [
-                'name'     => 'table_prefix',
-                'constant' => false,
-                'value'    => 'wp_',
+            $this->configurations['global']['entries']['table_prefix'] = [
+                'name'  => 'table_prefix',
+                'type'  => 'variable',
+                'value' => 'wp_',
             ];
             if ($io->askConfirmation('<info>Do you want to configure database connection parameters?</info> <comment>[Y,n]</comment>: ', true)) {
                 $databaseParameters = [
                     [
                         'name'      => 'DB_HOST',
-                        'constant'  => true,
+                        'type'      => 'constant',
                         'question'  => 'Database hostname',
                         'default'   => 'localhost',
                         'validator' => function ($value) {
@@ -333,7 +398,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     ],
                     [
                         'name'      => 'DB_NAME',
-                        'constant'  => true,
+                        'type'      => 'constant',
                         'question'  => 'Database name',
                         'validator' => function ($value) {
                             $value = trim($value);
@@ -345,7 +410,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     ],
                     [
                         'name'      => 'DB_USER',
-                        'constant'  => true,
+                        'type'      => 'constant',
                         'question'  => 'Database user name',
                         'validator' => function ($value) {
                             if (strlen($value) > 32) {
@@ -356,23 +421,23 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     ],
                     [
                         'name'     => 'DB_PASSWORD',
-                        'constant' => true,
+                        'type'     => 'constant',
                         'question' => 'Database user password',
                     ],
                     [
                         'name'     => 'DB_CHARSET',
-                        'constant' => true,
+                        'type'     => 'constant',
                         'question' => 'Database charset',
                         'default'  => 'utf8',
                     ],
                     [
-                        'name'     => 'DB_COLLATE',
-                        'constant' => true,
-                        'default'  => 'utf8',
+                        'name'    => 'DB_COLLATE',
+                        'type'    => 'constant',
+                        'default' => 'utf8',
                     ],
                     [
                         'name'      => 'table_prefix',
-                        'constant'  => false,
+                        'type'      => 'variable',
                         'question'  => 'Database tables prefix',
                         'default'   => 'wp_',
                         'target'    => 'global',
@@ -397,11 +462,11 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                         $value = $default;
                     }
                     $result = [
-                        'name'     => $entry['name'],
-                        'constant' => $entry['constant'],
-                        'value'    => (string)$value,
+                        'name'  => $entry['name'],
+                        'type'  => $entry['type'],
+                        'value' => (string)$value,
                     ];
-                    $configurations[array_key_exists('target', $entry) ? $entry['target'] : 'local']['entries'][$entry['name']] = $result;
+                    $this->configurations[array_key_exists('target', $entry) ? $entry['target'] : 'local']['entries'][$entry['name']] = $result;
                 }
             }
 
@@ -432,22 +497,22 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     }
                     return $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : '') . (array_key_exists('path', $p) ? ':' . $p['path'] : '/');
                 });
-                $configurations['local']['entries']['WP_SITEURL'] = [
-                    'name'     => 'WP_SITEURL',
-                    'constant' => true,
-                    'value'    => $siteUrl,
+                $this->configurations['local']['entries']['WP_SITEURL'] = [
+                    'name'  => 'WP_SITEURL',
+                    'type'  => 'constant',
+                    'value' => $siteUrl,
                 ];
                 $p = parse_url($siteUrl);
-                $configurations['local']['entries']['WP_HOME'] = [
-                    'name'     => 'WP_HOME',
-                    'constant' => true,
-                    'value'    => $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : ''),
+                $this->configurations['local']['entries']['WP_HOME'] = [
+                    'name'  => 'WP_HOME',
+                    'type'  => 'constant',
+                    'value' => $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : ''),
                 ];
             }
 
             // Generate configuration files
             $executor = new ProcessExecutor($io);
-            foreach ($configurations as $target => $configuration) {
+            foreach ($this->configurations as $target => $configuration) {
                 $templatePath = __DIR__ . '/templates/' . $configuration['file'] . '.tpl';
                 $template = null;
                 if (is_file($templatePath)) {
@@ -468,10 +533,17 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     } elseif ($value === false) {
                         $value = 'false';
                     }
-                    if ($entry['constant']) {
-                        $code = sprintf("define('%s', %s);", $name, $value);
-                    } else {
-                        $code = sprintf("$%s = %s;", $name, $value);
+                    switch ($entry['type']) {
+                        case 'constant':
+                            $code = sprintf("define('%s', %s);", $name, $value);
+                            break;
+                        case 'variable':
+                            $code = sprintf("$%s = %s;", $name, $value);
+                            break;
+                        case 'string':
+                        default:
+                            $code = $value;
+                            break;
                     }
                     $template = preg_replace('/\/\*\s*\{\s*' . $name . '\s*\}\s*\*\//usi', $code, $template);
                 }
