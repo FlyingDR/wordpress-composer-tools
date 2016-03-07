@@ -110,7 +110,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     if (file_exists($path)) {
                         throw new \InvalidArgumentException(sprintf('%s is already exists', $title));
                     }
-                    return $fs->findShortestPath($root, $path, true);
+                    return preg_replace('/^\.\//', '', $fs->findShortestPath($root, $path, true));
                 }, null, $dir);
             }
             $extra[$key] = $dir;
@@ -164,10 +164,6 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         try {
             $io = $this->getIO();
-            if (!$io->isInteractive()) {
-                $io->write('<info>composer.json configuration is skipped because running in non-interactive mode. Update it later</info>');
-                return;
-            }
             $composerConfig = new JsonFile($this->getProjectRoot() . '/composer.json');
             if (!$composerConfig->exists()) {
                 $io->write('<comment>composer.json is not found, skipping its configuration, you need to create it later</comment>');
@@ -184,85 +180,88 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
             $config['description'] = '';
             $config['authors'] = [];
             unset($config['version'], $config['type'], $config['keywords'], $config['homepage'], $config['time'], $config['license'], $config['support'], $config['require-dev']);
-            $io->write('<info>composer.json will be modified now to match your project settings</info>');
+            if ($io->isInteractive()) {
+                $io->write('<info>composer.json will be modified now to match your project settings</info>');
+                // Get package name 
+                $git = $this->getGitConfig();
+                $name = basename($this->getProjectRoot());
+                $name = preg_replace('{(?:([a-z])([A-Z])|([A-Z])([A-Z][a-z]))}', '\\1\\3-\\2\\4', $name);
+                $name = strtolower($name);
+                if (array_key_exists('github.user', $git)) {
+                    $name = $git['github.user'] . '/' . $name;
+                } elseif (!empty($_SERVER['USERNAME'])) {
+                    $name = $_SERVER['USERNAME'] . '/' . $name;
+                } elseif (get_current_user()) {
+                    $name = get_current_user() . '/' . $name;
+                } else {
+                    // package names must be in the format foo/bar
+                    $name = $name . '/' . $name;
+                }
+                $name = strtolower($name);
+                $name = $io->askAndValidate(
+                    'Package name (<vendor>/<name>) [<comment>' . $name . '</comment>]: ',
+                    function ($value) use ($name) {
+                        if (null === $value) {
+                            return $name;
+                        }
 
-            // Get package name 
-            $git = $this->getGitConfig();
-            $name = basename($this->getProjectRoot());
-            $name = preg_replace('{(?:([a-z])([A-Z])|([A-Z])([A-Z][a-z]))}', '\\1\\3-\\2\\4', $name);
-            $name = strtolower($name);
-            if (array_key_exists('github.user', $git)) {
-                $name = $git['github.user'] . '/' . $name;
-            } elseif (!empty($_SERVER['USERNAME'])) {
-                $name = $_SERVER['USERNAME'] . '/' . $name;
-            } elseif (get_current_user()) {
-                $name = get_current_user() . '/' . $name;
-            } else {
-                // package names must be in the format foo/bar
-                $name = $name . '/' . $name;
-            }
-            $name = strtolower($name);
-            $name = $io->askAndValidate(
-                'Package name (<vendor>/<name>) [<comment>' . $name . '</comment>]: ',
-                function ($value) use ($name) {
-                    if (null === $value) {
-                        return $name;
+                        if (!preg_match('{^[a-z0-9_.-]+/[a-z0-9_.-]+$}', $value)) {
+                            throw new \InvalidArgumentException(
+                                'The package name ' . $value . ' is invalid, it should be lowercase and have a vendor name, a forward slash, and a package name, matching: [a-z0-9_.-]+/[a-z0-9_.-]+'
+                            );
+                        }
+
+                        return $value;
+                    },
+                    null,
+                    $name
+                );
+                $config['name'] = $name;
+
+                // Get package description
+                $description = '';
+                $description = $io->ask('Description [<comment>' . $description . '</comment>]: ', $description);
+                $config['description'] = $description;
+
+                // Get package author
+                $author = '';
+                $parseAuthor = function ($author) {
+                    if (preg_match('/^(?P<name>[- \.,\p{L}\p{N}\'’]+) <(?P<email>.+?)>$/u', $author, $match) && filter_var($match['email'], FILTER_VALIDATE_EMAIL) !== false) {
+                        return [
+                            'name'  => trim($match['name']),
+                            'email' => $match['email'],
+                        ];
                     }
-
-                    if (!preg_match('{^[a-z0-9_.-]+/[a-z0-9_.-]+$}', $value)) {
+                    return null;
+                };
+                $formatAuthor = function ($name, $email) {
+                    return sprintf('%s <%s>', $name, $email);
+                };
+                if (array_key_exists('user.name', $git) && array_key_exists('user.email', $git)) {
+                    $author = $formatAuthor($git['user.name'], $git['user.email']);
+                    if (!$parseAuthor($author)) {
+                        $author = '';
+                    }
+                }
+                $author = $io->askAndValidate('Author [<comment>' . $author . '</comment>, n to skip]: ', function ($value) use ($parseAuthor, $formatAuthor, $author) {
+                    if ($value === 'n' || $value === 'no') {
+                        return null;
+                    }
+                    $value = $value ?: $author;
+                    $author = $parseAuthor($value);
+                    if (!is_array($author)) {
                         throw new \InvalidArgumentException(
-                            'The package name ' . $value . ' is invalid, it should be lowercase and have a vendor name, a forward slash, and a package name, matching: [a-z0-9_.-]+/[a-z0-9_.-]+'
+                            'Invalid author string.  Must be in the format: ' .
+                            'John Smith <john@example.com>'
                         );
                     }
-
-                    return $value;
-                },
-                null,
-                $name
-            );
-            $config['name'] = $name;
-
-            // Get package description
-            $description = '';
-            $description = $io->ask('Description [<comment>' . $description . '</comment>]: ', $description);
-            $config['description'] = $description;
-
-            // Get package author
-            $author = '';
-            $parseAuthor = function ($author) {
-                if (preg_match('/^(?P<name>[- \.,\p{L}\p{N}\'’]+) <(?P<email>.+?)>$/u', $author, $match) && filter_var($match['email'], FILTER_VALIDATE_EMAIL) !== false) {
-                    return [
-                        'name'  => trim($match['name']),
-                        'email' => $match['email'],
-                    ];
+                    return $formatAuthor($author['name'], $author['email']);
+                }, null, $author);
+                if ($author) {
+                    $config['authors'][] = $parseAuthor($author);
                 }
-                return null;
-            };
-            $formatAuthor = function ($name, $email) {
-                return sprintf('%s <%s>', $name, $email);
-            };
-            if (array_key_exists('user.name', $git) && array_key_exists('user.email', $git)) {
-                $author = $formatAuthor($git['user.name'], $git['user.email']);
-                if (!$parseAuthor($author)) {
-                    $author = '';
-                }
-            }
-            $author = $io->askAndValidate('Author [<comment>' . $author . '</comment>, n to skip]: ', function ($value) use ($parseAuthor, $formatAuthor, $author) {
-                if ($value === 'n' || $value === 'no') {
-                    return null;
-                }
-                $value = $value ?: $author;
-                $author = $parseAuthor($value);
-                if (!is_array($author)) {
-                    throw new \InvalidArgumentException(
-                        'Invalid author string.  Must be in the format: ' .
-                        'John Smith <john@example.com>'
-                    );
-                }
-                return $formatAuthor($author['name'], $author['email']);
-            }, null, $author);
-            if ($author) {
-                $config['authors'][] = $parseAuthor($author);
+            } else {
+                $io->write('<comment>composer.json is cleaned up, but not configured because installation is running in non-interactive mode. You need to configure it by yourself</comment>');
             }
 
             // Setup Wordpress directories and Wordpress installers paths
@@ -275,7 +274,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                 $key = $directory['key'];
                 $dir = $directory['path'];
                 if (array_key_exists($key, $extra)) {
-                    $dir = $extra[$dir];
+                    $dir = $extra[$key];
                 }
                 $directories[$type] = $dir;
                 $config['extra'][$key] = $dir;
@@ -341,10 +340,6 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         try {
             $io = $this->getIO();
-            if (!$io->isInteractive()) {
-                $io->write('<info>wp-config.php configuration is skipped because running in non-interactive mode</info>');
-                return;
-            }
             foreach ($this->configurations as $item) {
                 if (file_exists($this->getProjectRoot() . '/' . $item['file'])) {
                     $io->write('<comment>' . $item['file'] . ' configuration file is already exists, skipping</comment>');
@@ -375,139 +370,143 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                 ];
             }
 
-            // Perform database connection configuration
             // Database tables prefix should be defined in any way
             $this->configurations['global']['entries']['table_prefix'] = [
                 'name'  => 'table_prefix',
                 'type'  => 'variable',
                 'value' => 'wp_',
             ];
-            if ($io->askConfirmation('<info>Do you want to configure database connection parameters?</info> <comment>[Y,n]</comment>: ', true)) {
-                $databaseParameters = [
-                    [
-                        'name'      => 'DB_HOST',
-                        'type'      => 'constant',
-                        'question'  => 'Database hostname',
-                        'default'   => 'localhost',
-                        'validator' => function ($value) {
-                            if (filter_var('http://' . $value . '/', FILTER_VALIDATE_URL) === false) {
-                                throw new \InvalidArgumentException('Invalid database host name');
+            if ($io->isInteractive()) {
+                // Database connection configuration
+                if ($io->askConfirmation('<info>Do you want to configure database connection parameters?</info> <comment>[Y,n]</comment>: ', true)) {
+                    $databaseParameters = [
+                        [
+                            'name'      => 'DB_HOST',
+                            'type'      => 'constant',
+                            'question'  => 'Database hostname',
+                            'default'   => 'localhost',
+                            'validator' => function ($value) {
+                                if (filter_var('http://' . $value . '/', FILTER_VALIDATE_URL) === false) {
+                                    throw new \InvalidArgumentException('Invalid database host name');
+                                }
+                                return $value;
                             }
-                            return $value;
-                        }
-                    ],
-                    [
-                        'name'      => 'DB_NAME',
-                        'type'      => 'constant',
-                        'question'  => 'Database name',
-                        'validator' => function ($value) {
-                            $value = trim($value);
-                            if ($value !== '' && (!preg_match('/^[^\x00\xff\x5c\/\.\:]+$/i', $value))) {
-                                throw new \InvalidArgumentException('Database name can\'t contain special characters');
+                        ],
+                        [
+                            'name'      => 'DB_NAME',
+                            'type'      => 'constant',
+                            'question'  => 'Database name',
+                            'validator' => function ($value) {
+                                $value = trim($value);
+                                if ($value !== '' && (!preg_match('/^[^\x00\xff\x5c\/\.\:]+$/i', $value))) {
+                                    throw new \InvalidArgumentException('Database name can\'t contain special characters');
+                                }
+                                return $value;
                             }
-                            return $value;
-                        }
-                    ],
-                    [
-                        'name'      => 'DB_USER',
-                        'type'      => 'constant',
-                        'question'  => 'Database user name',
-                        'validator' => function ($value) {
-                            if (strlen($value) > 32) {
-                                throw new \InvalidArgumentException('Database user name can\'t exceed 32 characters');
+                        ],
+                        [
+                            'name'      => 'DB_USER',
+                            'type'      => 'constant',
+                            'question'  => 'Database user name',
+                            'validator' => function ($value) {
+                                if (strlen($value) > 32) {
+                                    throw new \InvalidArgumentException('Database user name can\'t exceed 32 characters');
+                                }
+                                return $value;
                             }
-                            return $value;
-                        }
-                    ],
-                    [
-                        'name'     => 'DB_PASSWORD',
-                        'type'     => 'constant',
-                        'question' => 'Database user password',
-                    ],
-                    [
-                        'name'     => 'DB_CHARSET',
-                        'type'     => 'constant',
-                        'question' => 'Database charset',
-                        'default'  => 'utf8',
-                    ],
-                    [
-                        'name'    => 'DB_COLLATE',
-                        'type'    => 'constant',
-                        'default' => 'utf8',
-                    ],
-                    [
-                        'name'      => 'table_prefix',
-                        'type'      => 'variable',
-                        'question'  => 'Database tables prefix',
-                        'default'   => 'wp_',
-                        'target'    => 'global',
-                        'validator' => function ($value) {
-                            if ($value !== '' && substr($value, -1) !== '_') {
-                                $value .= '_';
+                        ],
+                        [
+                            'name'     => 'DB_PASSWORD',
+                            'type'     => 'constant',
+                            'question' => 'Database user password',
+                        ],
+                        [
+                            'name'     => 'DB_CHARSET',
+                            'type'     => 'constant',
+                            'question' => 'Database charset',
+                            'default'  => 'utf8',
+                        ],
+                        [
+                            'name'    => 'DB_COLLATE',
+                            'type'    => 'constant',
+                            'default' => '',
+                        ],
+                        [
+                            'name'      => 'table_prefix',
+                            'type'      => 'variable',
+                            'question'  => 'Database tables prefix',
+                            'default'   => 'wp_',
+                            'target'    => 'global',
+                            'validator' => function ($value) {
+                                if ($value !== '' && substr($value, -1) !== '_') {
+                                    $value .= '_';
+                                }
+                                return $value;
                             }
-                            return $value;
-                        }
-                    ],
-                ];
-                foreach ($databaseParameters as $entry) {
-                    $default = array_key_exists('default', $entry) ? $entry['default'] : null;
-                    if (array_key_exists('question', $entry)) {
-                        $question = $entry['question'] . ($default !== null ? ' [<comment>' . $default . '</comment>]' : '') . ': ';
-                        if (array_key_exists('validator', $entry)) {
-                            $value = $io->askAndValidate($question, $entry['validator'], null, $default);
-                        } else {
-                            $value = $io->ask($question, $default);
-                        }
-                    } else {
-                        $value = $default;
-                    }
-                    $result = [
-                        'name'  => $entry['name'],
-                        'type'  => $entry['type'],
-                        'value' => (string)$value,
+                        ],
                     ];
-                    $this->configurations[array_key_exists('target', $entry) ? $entry['target'] : 'local']['entries'][$entry['name']] = $result;
+                    foreach ($databaseParameters as $entry) {
+                        $default = array_key_exists('default', $entry) ? $entry['default'] : null;
+                        if (array_key_exists('question', $entry)) {
+                            $question = $entry['question'] . ($default !== null ? ' [<comment>' . $default . '</comment>]' : '') . ': ';
+                            if (array_key_exists('validator', $entry)) {
+                                $value = $io->askAndValidate($question, $entry['validator'], null, $default);
+                            } else {
+                                $value = $io->ask($question, $default);
+                            }
+                        } else {
+                            $value = $default;
+                        }
+                        $result = [
+                            'name'  => $entry['name'],
+                            'type'  => $entry['type'],
+                            'value' => (string)$value,
+                        ];
+                        $this->configurations[array_key_exists('target', $entry) ? $entry['target'] : 'local']['entries'][$entry['name']] = $result;
+                    }
                 }
-            }
 
-            // Site URL configuration
-            if ($io->askConfirmation('<info>Do you want to configure site URL parameters?</info> <comment>[Y,n]</comment>: ', true)) {
-                $siteUrl = $io->askAndValidate('Enter URL of home page of this Wordpress site: ', function ($value) use ($io) {
-                    if (strpos($value, '://') === false) {
-                        $value = 'http://' . $value;
-                    }
-                    $p = parse_url($value);
-                    if (!is_array($p)) {
-                        throw new \InvalidArgumentException('Invalid URL');
-                    }
-                    if (!array_key_exists('host', $p)) {
-                        throw new \InvalidArgumentException('Invalid URL, no host name is found');
-                    }
-                    if (array_key_exists('query', $p)) {
-                        throw new \InvalidArgumentException('Invalid URL, no query string should be included');
-                    }
-                    if (array_key_exists('user', $p) || array_key_exists('pass', $p)) {
-                        throw new \InvalidArgumentException('Invalid URL, no access credentials should be included');
-                    }
-                    if (!array_key_exists('scheme', $p)) {
-                        $p['scheme'] = 'http';
-                    }
-                    if (array_key_exists('path', $p)) {
-                        $p['path'] = rtrim($p['path'], '/');
-                    }
-                    return $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : '') . (array_key_exists('path', $p) ? ':' . $p['path'] : '/');
-                });
-                $this->configurations['local']['entries']['WP_SITEURL'] = [
-                    'name'  => 'WP_SITEURL',
-                    'type'  => 'constant',
-                    'value' => $siteUrl,
-                ];
-                $p = parse_url($siteUrl);
-                $this->configurations['local']['entries']['WP_HOME'] = [
-                    'name'  => 'WP_HOME',
-                    'type'  => 'constant',
-                    'value' => $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : ''),
-                ];
+                // Site URL configuration
+                if ($io->askConfirmation('<info>Do you want to configure site URL parameters?</info> <comment>[Y,n]</comment>: ', true)) {
+                    $siteUrl = $io->askAndValidate('Enter URL of home page of this Wordpress site: ', function ($value) use ($io) {
+                        if (strpos($value, '://') === false) {
+                            $value = 'http://' . $value;
+                        }
+                        $p = parse_url($value);
+                        if (!is_array($p)) {
+                            throw new \InvalidArgumentException('Invalid URL');
+                        }
+                        if (!array_key_exists('host', $p)) {
+                            throw new \InvalidArgumentException('Invalid URL, no host name is found');
+                        }
+                        if (array_key_exists('query', $p)) {
+                            throw new \InvalidArgumentException('Invalid URL, no query string should be included');
+                        }
+                        if (array_key_exists('user', $p) || array_key_exists('pass', $p)) {
+                            throw new \InvalidArgumentException('Invalid URL, no access credentials should be included');
+                        }
+                        if (!array_key_exists('scheme', $p)) {
+                            $p['scheme'] = 'http';
+                        }
+                        if (array_key_exists('path', $p)) {
+                            $p['path'] = rtrim($p['path'], '/');
+                        }
+                        return $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : '') . (array_key_exists('path', $p) ? ':' . $p['path'] : '/');
+                    });
+                    $this->configurations['local']['entries']['WP_SITEURL'] = [
+                        'name'  => 'WP_SITEURL',
+                        'type'  => 'constant',
+                        'value' => $siteUrl,
+                    ];
+                    $p = parse_url($siteUrl);
+                    $this->configurations['local']['entries']['WP_HOME'] = [
+                        'name'  => 'WP_HOME',
+                        'type'  => 'constant',
+                        'value' => $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : ''),
+                    ];
+                }
+            } else {
+                $io->write('<comment>Wordpress configuration files are created, but no details was configured because installation is running in non-interactive mode. You need to review and update it by yourself</comment>');
             }
 
             // Generate configuration files
@@ -525,7 +524,10 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     $name = $entry['name'];
                     $value = $entry['value'];
                     if (is_string($value)) {
-                        $value = "'" . addslashes($entry['value']) . "'";
+                        $value = addslashes($entry['value']);
+                        if ($entry['type'] !== 'string') {
+                            $value = "'" . $value . "'";
+                        }
                     } elseif ($value === null) {
                         $value = 'null';
                     } elseif ($value === true) {
