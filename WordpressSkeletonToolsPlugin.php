@@ -9,6 +9,7 @@ use Composer\Json\JsonFile;
 use Composer\Plugin\PluginInterface;
 use Composer\Util\Filesystem;
 use Composer\Util\ProcessExecutor;
+use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
@@ -94,9 +95,22 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         $this->composer = $composer;
         $this->io = $io;
-        // This is the only moment when we can override primary Wordpress directories
-        foreach (self::$wordpressDirectories as $directory) {
-            $this->configureWordpressDir($directory['key'], $directory['title'], $directory['path']);
+        // This is actually a hack, but there seems to be no other way to access current command name from plugin
+        $reflection = new \ReflectionObject($io);
+        $property = $reflection->getProperty('input');
+        $property->setAccessible(true);
+        /** @var InputInterface $input */
+        $input = $property->getValue($io);
+        $property->setAccessible(false);
+        $command = null;
+        if ($input->hasArgument('command')) {
+            $command = $input->getArgument('command');
+        }
+        if ($command === 'create-project' && $composer->getPackage()->getPrettyName() === 'flying/wordpress-skeleton') {
+            // This is the only moment when we can override primary Wordpress directories
+            foreach (self::$wordpressDirectories as $directory) {
+                $this->configureWordpressDir($directory['key'], $directory['title'], $directory['path']);
+            }
         }
     }
 
