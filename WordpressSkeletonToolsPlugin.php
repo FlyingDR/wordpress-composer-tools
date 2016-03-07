@@ -7,6 +7,7 @@ use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\IO\IOInterface;
 use Composer\Json\JsonFile;
 use Composer\Plugin\PluginInterface;
+use Composer\Util\Filesystem;
 use Composer\Util\ProcessExecutor;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
@@ -37,6 +38,38 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         $this->composer = $composer;
         $this->io = $io;
+        // This is the only moment when we can override Wordpress installation path
+        if ($this->io->isInteractive()) {
+            $installDir = 'wordpress';
+            $extra = $this->composer->getPackage()->getExtra();
+            if (array_key_exists('wordpress-install-dir', $extra)) {
+                $installDir = $extra['wordpress-install-dir'];
+            }
+            try {
+                $installDir = $this->io->askAndValidate(sprintf('Wordpress installation directory [<comment>%s</comment>]: ', $installDir), function ($value) use ($installDir) {
+                    if ($value === '') {
+                        $value = $installDir;
+                    }
+                    $fs = new Filesystem();
+                    if ($fs->isAbsolutePath($value)) {
+                        throw new \InvalidArgumentException('Wordpress installation directory should be defined as relative path');
+                    }
+                    $root = $fs->normalizePath($this->getProjectRoot());
+                    $path = $fs->normalizePath($this->getProjectRoot() . '/' . $value);
+                    if (strpos($path, $root) !== 0) {
+                        throw new \InvalidArgumentException('Wordpress installation directory should reside within project root');
+                    }
+                    if (file_exists($path)) {
+                        throw new \InvalidArgumentException('Wordpress installation directory is already exists');
+                    }
+                    return $fs->findShortestPath($root, $path, true);
+                }, null, $installDir);
+                $extra['wordpress-install-dir'] = $installDir;
+                $this->composer->getPackage()->setExtra($extra);
+            } catch (\Exception $e) {
+
+            }
+        }
     }
 
     /**
