@@ -5,12 +5,14 @@ namespace Flying\Composer\Plugin;
 use Composer\Composer;
 use Composer\Config;
 use Composer\EventDispatcher\EventSubscriberInterface;
+use Composer\Installer\InstallerInterface;
 use Composer\IO\IOInterface;
 use Composer\Json\JsonFile;
+use Composer\Package\PackageInterface;
 use Composer\Plugin\PluginInterface;
+use Composer\Semver\Constraint\EmptyConstraint;
 use Composer\Util\Filesystem;
 use Composer\Util\ProcessExecutor;
-use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
@@ -98,60 +100,6 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         $this->composer = $composer;
         $this->io = $io;
-        // This is actually a hack, but there seems to be no other way to access current command name from plugin
-        $reflection = new \ReflectionObject($io);
-        $property = $reflection->getProperty('input');
-        $property->setAccessible(true);
-        /** @var InputInterface $input */
-        $input = $property->getValue($io);
-        $property->setAccessible(false);
-        $command = null;
-        if ($input->hasArgument('command')) {
-            $command = $input->getArgument('command');
-        }
-        if ($command === 'create-project' && $composer->getPackage()->getPrettyName() === 'flying/wordpress-composer') {
-            // This is the only moment when we can override primary Wordpress directories
-            try {
-                $package = $this->getComposer()->getPackage();
-                $extra = $package->getExtra();
-                foreach (self::$wordpressDirectories as $id => $item) {
-                    $key = $item['key'];
-                    $dir = $item['path'];
-                    if (array_key_exists($key, $extra)) {
-                        $dir = $extra[$key];
-                    }
-                    if ($this->io->isInteractive()) {
-                        $question = array_key_exists('question', $item) ? $item['question'] : $item['title'];
-                        $dir = $this->io->askAndValidate(sprintf('%s [<comment>%s</comment>]: ', $question, $dir), function ($value) use ($item, $dir) {
-                            if ($value === '') {
-                                $value = $dir;
-                            }
-                            $title = $item['title'];
-                            $fs = new Filesystem();
-                            if ($fs->isAbsolutePath($value)) {
-                                throw new \InvalidArgumentException(sprintf('%s should be defined as relative path', $title));
-                            }
-                            $root = $fs->normalizePath($this->getProjectRoot());
-                            $path = $fs->normalizePath($this->getProjectRoot() . '/' . $value);
-                            if (strpos($path, $root) !== 0) {
-                                throw new \InvalidArgumentException(sprintf('%s should reside within project root', $title));
-                            }
-                            if ($value === '.' && !$item['allow_root']) {
-                                throw new \InvalidArgumentException(sprintf('%s can\'t match project root', $title));
-                            }
-                            if ($value !== '.' && file_exists($path)) {
-                                throw new \InvalidArgumentException(sprintf('%s is already exists', $title));
-                            }
-                            return preg_replace('/^\.\//', '', $fs->findShortestPath($root, $path, true));
-                        }, null, $dir);
-                    }
-                    $extra[$key] = $dir;
-                }
-                $package->setExtra($extra);
-            } catch (\Exception $e) {
-
-            }
-        }
     }
 
     /**
@@ -185,8 +133,87 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     public function onCreateProject()
     {
         $this->variables = [];
+        if ($this->getComposer()->getPackage()->getPrettyName() === 'flying/wordpress-composer') {
+            $this->configureWordpressDirectories();
+        }
         $this->configureComposer();
         $this->createWordpressConfig();
+    }
+
+    /**
+     * Configure main directories where Wordpress will be installed
+     */
+    private function configureWordpressDirectories()
+    {
+        try {
+            $composer = $this->getComposer();
+            $fs = new Filesystem();
+            $projectRoot = $fs->normalizePath($this->getProjectRoot());
+            // By this time we already have Wordpress installed. However if we currently have different path for it - we need to move it to new location
+            $wpInstallPath = null;
+            try {
+                $package = $composer->getRepositoryManager()->getLocalRepository()->findPackage('johnpbloch/wordpress', new EmptyConstraint());
+                if ($package instanceof PackageInterface) {
+                    $installer = $composer->getInstallationManager()->getInstaller('wordpress-core');
+                    if ($installer instanceof InstallerInterface) {
+                        $path = $installer->getInstallPath($package);
+                        if (!$fs->isAbsolutePath($path)) {
+                            $path = $projectRoot . '/' . $path;
+                        }
+                        $path = $fs->normalizePath($path);
+                        if (!$fs->isDirEmpty($path)) {
+                            $wpInstallPath = $path;
+                        }
+                    }
+                }
+            } catch (\InvalidArgumentException $e) {
+
+            }
+            $package = $composer->getPackage();
+            $extra = $package->getExtra();
+            foreach (self::$wordpressDirectories as $dirId => $dirInfo) {
+                $key = $dirInfo['key'];
+                $dir = $dirInfo['path'];
+                if (array_key_exists($key, $extra)) {
+                    $dir = $extra[$key];
+                }
+                if ($this->io->isInteractive()) {
+                    $question = array_key_exists('question', $dirInfo) ? $dirInfo['question'] : $dirInfo['title'];
+                    $dir = $this->io->askAndValidate(sprintf('%s [<comment>%s</comment>]: ', $question, $dir), function ($value) use ($dirId, $dirInfo, $dir, $wpInstallPath, $projectRoot, $fs) {
+                        if ($value === '') {
+                            $value = $dir;
+                        }
+                        $title = $dirInfo['title'];
+                        if ($fs->isAbsolutePath($value)) {
+                            throw new \InvalidArgumentException(sprintf('%s should be defined as relative path', $title));
+                        }
+                        $path = $fs->normalizePath($this->getProjectRoot() . '/' . $value);
+                        if (strpos($path, $projectRoot) !== 0) {
+                            throw new \InvalidArgumentException(sprintf('%s should reside within project root', $title));
+                        }
+                        if ($value === '.' && !$dirInfo['allow_root']) {
+                            throw new \InvalidArgumentException(sprintf('%s can\'t match project root', $title));
+                        }
+                        // Project root directory and current Wordpress installation directories are available, in other cases it is a problem
+                        if ($value !== '.' && ($dirId !== 'install' || ($wpInstallPath === null || $path !== $wpInstallPath)) && file_exists($path)) {
+                            throw new \InvalidArgumentException(sprintf('%s is already exists', $title));
+                        }
+                        return preg_replace('/^\.\//', '', $fs->findShortestPath($projectRoot, $path, true));
+                    }, null, $dir);
+                }
+                $extra[$key] = $dir;
+            }
+            $package->setExtra($extra);
+            // If Wordpress is configured to be located into different place then it is already installed - move it
+            if ($wpInstallPath) {
+                $wpTargetPath = $fs->normalizePath($projectRoot . '/' . $extra[self::$wordpressDirectories['install']['key']]);
+                if ($wpInstallPath !== $wpTargetPath) {
+                    $fs->rename($wpInstallPath, $wpTargetPath);
+                }
+            }
+        } catch (\Exception $e) {
+
+        }
     }
 
     /**
