@@ -478,10 +478,36 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 'LOGGED_IN_SALT',
                 'NONCE_SALT',
             ];
+            if (!function_exists('random_int')) {
+                // By default we use secure random_int() function to generate keys and salts
+                // However it is only available in PHP7 natively, so for PHP5 we should try to use its PHP version from include compatibility package
+                // Since at a time of package creation no packages are loaded - let's try to load it by ourselves
+                try {
+                    $package = $this->getComposer()->getRepositoryManager()->getLocalRepository()->findPackage('paragonie/random_compat', new EmptyConstraint());
+                    if ($package instanceof PackageInterface) {
+                        $installPath = $this->getComposer()->getInstallationManager()->getInstallPath($package);
+                        $fs = new Filesystem();
+                        foreach ($package->getAutoload() as $type => $includes) {
+                            if ($type !== 'files') {
+                                continue;
+                            }
+                            foreach ((array)$includes as $include) {
+                                $path = $fs->normalizePath($installPath . '/' . $include);
+                                if (file_exists($path)) {
+                                    /** @noinspection PhpIncludeInspection */
+                                    include_once $path;
+                                }
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+
+                }
+            }
             foreach ($keysAndSalts as $key) {
                 $value = '';
                 do {
-                    $c = chr(random_int(33, 126));
+                    $c = chr(function_exists('random_int') ? random_int(33, 126) : mt_rand(33, 126));
                     if (!in_array($c, ["'", '"', '\\'], true)) {
                         $value .= $c;
                     }
