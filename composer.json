@@ -1,6 +1,6 @@
 {
-    "name": "flying/wordpress-skeleton-tools",
-    "description": "Composer plugin for Wordpress skeleton project",
+    "name": "flying/wordpress-composer-tools",
+    "description": "Composer utilities for Composer-controlled Wordpress projects",
     "type": "composer-plugin",
     "license": "MIT",
     "authors": [
@@ -20,7 +20,7 @@
         }
     },
     "extra": {
-        "class": "Flying\\Composer\\Plugin\\WordpressSkeletonToolsPlugin"
+        "class": "Flying\\Composer\\Plugin\\WordpressComposerToolsPlugin"
     },
     "require-dev": {
         "composer/composer": "^1.0.0-beta"

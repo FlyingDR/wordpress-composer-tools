@@ -1,2 +1,2 @@
-# wordpress-skeleton-tools
-Composer plugin for Wordpress skeleton project
+# wordpress-composer-tools
+Composer utilities for Composer-controlled Wordpress projects

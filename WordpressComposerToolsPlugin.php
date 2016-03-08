@@ -14,7 +14,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
-class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberInterface
+class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberInterface
 {
     /**
      * @var Composer
@@ -107,7 +107,7 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
         if ($input->hasArgument('command')) {
             $command = $input->getArgument('command');
         }
-        if ($command === 'create-project' && $composer->getPackage()->getPrettyName() === 'flying/wordpress-skeleton') {
+        if ($command === 'create-project' && $composer->getPackage()->getPrettyName() === 'flying/wordpress-composer') {
             // This is the only moment when we can override primary Wordpress directories
             foreach (self::$wordpressDirectories as $directory) {
                 $this->configureWordpressDir($directory['key'], $directory['title'], $directory['path']);
