@@ -3,6 +3,7 @@
 namespace Flying\Composer\Plugin;
 
 use Composer\Composer;
+use Composer\Config;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\IO\IOInterface;
 use Composer\Json\JsonFile;
@@ -199,14 +200,14 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         try {
             $io = $this->getIO();
-            $composerConfig = new JsonFile($this->getProjectRoot() . '/composer.json');
-            if (!$composerConfig->exists()) {
+            $composerJson = new JsonFile($this->getProjectRoot() . '/composer.json');
+            if (!$composerJson->exists()) {
                 $io->write('<comment>composer.json is not found, skipping its configuration, you need to create it later</comment>');
                 return;
             }
             try {
                 /** @var array $config */
-                $config = $composerConfig->read();
+                $config = $composerJson->read();
             } catch (\RuntimeException $e) {
                 $io->write('<error>composer.json is not valid, skipping its configuration, you need to create it later</error>');
                 return;
@@ -307,7 +308,9 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                 $io->write('<comment>composer.json is cleaned up, but not configured because installation is running in non-interactive mode. You need to configure it by yourself</comment>');
             }
 
-            $gitIgnore = ['', '# Directories for Wordpress plugins and themes controlled by Composer'];
+            $gitIgnore = [
+                '# Wordpress itself and related directories',
+            ];
             // Setup Wordpress directories and Wordpress installers paths
             if (!array_key_exists('extra', $config)) {
                 $config['extra'] = [];
@@ -326,7 +329,19 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                     'type'  => 'string',
                     'value' => $dir,
                 ];
+                if ($type !== 'content') {
+                    $gitIgnore[] = '/' . $dir;
+                }
             }
+            // Ignore vendor and bin directories that are controlled by Composer
+            $composerCfg = $this->getComposer()->getConfig();
+            $gitIgnore[] = '/' . $composerCfg->get('vendor-dir', Config::RELATIVE_PATHS);
+            $binDir = $composerCfg->get('bin-dir', Config::RELATIVE_PATHS);
+            if (!in_array($binDir, ['', '.'], true)) {
+                $gitIgnore[] = '/' . $binDir;
+            }
+            $gitIgnore[] = '';
+            $gitIgnore[] = '# Directories for Wordpress plugins and themes controlled by Composer';
             $config['extra']['installer-paths'] = [];
             foreach (self::$installerPaths as $type => $dir) {
                 $path = sprintf('%s/%s/{$name}', $directories['content'], $dir);
@@ -334,15 +349,11 @@ class WordpressSkeletonToolsPlugin implements PluginInterface, EventSubscriberIn
                 $gitIgnore[] = sprintf('/%s/%s', $directories['content'], $dir);
             }
 
-            $composerConfig->write($config);
+            $composerJson->write($config);
             $io->write('<info>composer.json is successfully updated</info>');
 
-            // Create / update .gitignore
-            $gitIgnorePath = $this->getProjectRoot() . '/.gitignore';
-            if (!file_exists($gitIgnorePath)) {
-                file_put_contents($gitIgnorePath, "\n");
-            }
-            file_put_contents($gitIgnorePath, implode("\n", $gitIgnore), FILE_APPEND);
+            // Create .gitignore
+            file_put_contents($this->getProjectRoot() . '/.gitignore', implode("\n", $gitIgnore));
         } catch (\Exception $e) {
             $this->getIO()->writeError('composer.json configuration failed due to exception: ' . $e->getMessage());
         }
