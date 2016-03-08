@@ -37,14 +37,16 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      */
     private static $wordpressDirectories = [
         'install' => [
-            'key'   => 'wordpress-install-dir',
-            'title' => 'Wordpress installation directory',
-            'path'  => 'wordpress',
+            'key'        => 'wordpress-install-dir',
+            'title'      => 'Wordpress installation directory',
+            'path'       => 'wordpress',
+            'allow_root' => false,
         ],
         'content' => [
-            'key'   => 'wordpress-content-dir',
-            'title' => 'Wordpress content directory',
-            'path'  => 'content',
+            'key'        => 'wordpress-content-dir',
+            'title'      => 'Wordpress content directory',
+            'path'       => 'content',
+            'allow_root' => false,
         ],
     ];
     /**
@@ -109,49 +111,46 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         }
         if ($command === 'create-project' && $composer->getPackage()->getPrettyName() === 'flying/wordpress-composer') {
             // This is the only moment when we can override primary Wordpress directories
-            foreach (self::$wordpressDirectories as $directory) {
-                $this->configureWordpressDir($directory['key'], $directory['title'], $directory['path']);
-            }
-        }
-    }
+            try {
+                $package = $this->getComposer()->getPackage();
+                $extra = $package->getExtra();
+                foreach (self::$wordpressDirectories as $id => $item) {
+                    $key = $item['key'];
+                    $dir = $item['path'];
+                    if (array_key_exists($key, $extra)) {
+                        $dir = $extra[$key];
+                    }
+                    if ($this->io->isInteractive()) {
+                        $question = array_key_exists('question', $item) ? $item['question'] : $item['title'];
+                        $dir = $this->io->askAndValidate(sprintf('%s [<comment>%s</comment>]: ', $question, $dir), function ($value) use ($item, $dir) {
+                            if ($value === '') {
+                                $value = $dir;
+                            }
+                            $title = $item['title'];
+                            $fs = new Filesystem();
+                            if ($fs->isAbsolutePath($value)) {
+                                throw new \InvalidArgumentException(sprintf('%s should be defined as relative path', $title));
+                            }
+                            $root = $fs->normalizePath($this->getProjectRoot());
+                            $path = $fs->normalizePath($this->getProjectRoot() . '/' . $value);
+                            if (strpos($path, $root) !== 0) {
+                                throw new \InvalidArgumentException(sprintf('%s should reside within project root', $title));
+                            }
+                            if ($value === '.' && !$item['allow_root']) {
+                                throw new \InvalidArgumentException(sprintf('%s can\'t match project root', $title));
+                            }
+                            if ($value !== '.' && file_exists($path)) {
+                                throw new \InvalidArgumentException(sprintf('%s is already exists', $title));
+                            }
+                            return preg_replace('/^\.\//', '', $fs->findShortestPath($root, $path, true));
+                        }, null, $dir);
+                    }
+                    $extra[$key] = $dir;
+                }
+                $package->setExtra($extra);
+            } catch (\Exception $e) {
 
-    /**
-     * @param string $key
-     * @param string $title
-     * @param string $default
-     */
-    private function configureWordpressDir($key, $title, $default)
-    {
-        try {
-            $dir = $default;
-            $extra = $this->getComposer()->getPackage()->getExtra();
-            if (array_key_exists($key, $extra)) {
-                $dir = $extra[$key];
             }
-            if ($this->io->isInteractive()) {
-                $dir = $this->io->askAndValidate(sprintf('%s [<comment>%s</comment>]: ', $title, $dir), function ($value) use ($title, $dir) {
-                    if ($value === '') {
-                        $value = $dir;
-                    }
-                    $fs = new Filesystem();
-                    if ($fs->isAbsolutePath($value)) {
-                        throw new \InvalidArgumentException(sprintf('%s should be defined as relative path', $title));
-                    }
-                    $root = $fs->normalizePath($this->getProjectRoot());
-                    $path = $fs->normalizePath($this->getProjectRoot() . '/' . $value);
-                    if (strpos($path, $root) !== 0) {
-                        throw new \InvalidArgumentException(sprintf('%s should reside within project root', $title));
-                    }
-                    if (file_exists($path)) {
-                        throw new \InvalidArgumentException(sprintf('%s is already exists', $title));
-                    }
-                    return preg_replace('/^\.\//', '', $fs->findShortestPath($root, $path, true));
-                }, null, $dir);
-            }
-            $extra[$key] = $dir;
-            $this->getComposer()->getPackage()->setExtra($extra);
-        } catch (\Exception $e) {
-
         }
     }
 
@@ -186,17 +185,17 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     public function onCreateProject()
     {
         $this->variables = [];
-        $this->modifyComposer();
+        $this->configureComposer();
         $this->createWordpressConfig();
     }
 
     /**
      * Update composer.json to prepare it to use by newly created project
-     * Code of this function is partially taken from Composer because of similar functionality
+     * Parts of code of this function are taken from Composer itself because of similar functionality
      *
      * @see Composer\Command\InitCommand::interact
      */
-    private function modifyComposer()
+    private function configureComposer()
     {
         try {
             $io = $this->getIO();
@@ -308,14 +307,36 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 $io->write('<comment>composer.json is cleaned up, but not configured because installation is running in non-interactive mode. You need to configure it by yourself</comment>');
             }
 
-            $gitIgnore = [
-                '# Wordpress itself and related directories',
+            // Setup WPackagist repository
+            if (!array_key_exists('repositories', $config)) {
+                $config['repositories'] = [];
+            }
+            $wpackagist = [
+                'type' => 'composer',
+                'url'  => 'https://wpackagist.org',
             ];
+            foreach ($config['repositories'] as $repository) {
+                if (array_key_exists('url', $repository) &&
+                    array_key_exists('type', $repository) &&
+                    $repository['type'] === $wpackagist['type'] &&
+                    $repository['url'] === $wpackagist['url']
+                ) {
+                    $wpackagist = null;
+                    break;
+                }
+            }
+            if ($wpackagist !== null) {
+                $config['repositories'][] = $wpackagist;
+            }
+
             // Setup Wordpress directories and Wordpress installers paths
             if (!array_key_exists('extra', $config)) {
                 $config['extra'] = [];
             }
             $extra = $this->getComposer()->getPackage()->getExtra();
+            $gitIgnore = [
+                '# Wordpress itself and related directories',
+            ];
             $directories = [];
             foreach (self::$wordpressDirectories as $type => $directory) {
                 $key = $directory['key'];
@@ -335,9 +356,16 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
             // Ignore vendor and bin directories that are controlled by Composer
             $composerCfg = $this->getComposer()->getConfig();
-            $gitIgnore[] = '/' . $composerCfg->get('vendor-dir', Config::RELATIVE_PATHS);
+            $vendorDir = $composerCfg->get('vendor-dir', Config::RELATIVE_PATHS);
+            $gitIgnore[] = '/' . $vendorDir;
             $binDir = $composerCfg->get('bin-dir', Config::RELATIVE_PATHS);
-            if (!in_array($binDir, ['', '.'], true)) {
+            if ($binDir !== 'vendor/bin') {
+                if (!array_key_exists('config', $config)) {
+                    $config['config'] = [];
+                }
+                $config['config']['bin-dir'] = $binDir;
+            }
+            if (!in_array($binDir, ['', '.'], true) && strpos($binDir, $vendorDir . '/') !== 0) {
                 $gitIgnore[] = '/' . $binDir;
             }
             $gitIgnore[] = '';
@@ -444,7 +472,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             ];
             if ($io->isInteractive()) {
                 // Database connection configuration
-                if ($io->askConfirmation('<info>Do you want to configure database connection parameters?</info> <comment>[Y,n]</comment>: ', true)) {
+                if ($io->askConfirmation('<info>Do you want to configure database connection parameters?</info> [<comment>Y,n</comment>]: ', true)) {
                     $databaseParameters = [
                         [
                             'name'      => 'DB_HOST',
@@ -531,7 +559,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 }
 
                 // Site URL configuration
-                if ($io->askConfirmation('<info>Do you want to configure site URL parameters?</info> <comment>[Y,n]</comment>: ', true)) {
+                if ($io->askConfirmation('<info>Do you want to configure site URL parameters?</info> [<comment>Y,n</comment>]: ', true)) {
                     $siteUrl = $io->askAndValidate('Enter URL of home page of this Wordpress site: ', function ($value) use ($io) {
                         if (strpos($value, '://') === false) {
                             $value = 'http://' . $value;
