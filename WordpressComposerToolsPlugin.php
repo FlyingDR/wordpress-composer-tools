@@ -120,11 +120,11 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
 
     /**
      * @return string
-     * @throws \RuntimeException
      */
     public function getProjectRoot()
     {
         if (!$this->root) {
+            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
             $this->root = dirname($this->getComposer()->getConfig()->get('vendor-dir'));
         }
         return $this->root;
