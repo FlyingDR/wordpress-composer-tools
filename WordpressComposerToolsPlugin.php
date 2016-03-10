@@ -12,6 +12,7 @@ use Composer\Package\PackageInterface;
 use Composer\Plugin\PluginInterface;
 use Composer\Semver\Constraint\EmptyConstraint;
 use Composer\Util\Filesystem;
+use Composer\Util\Platform;
 use Composer\Util\ProcessExecutor;
 use Flying\Composer\Plugin\IO\AutomatedIO;
 use Symfony\Component\Process\ExecutableFinder;
@@ -92,6 +93,10 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     /**
      * @var array
      */
+    private $configuredComponents = [];
+    /**
+     * @var array
+     */
     private $variables = [];
     /**
      * @var Filesystem
@@ -101,6 +106,14 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      * @var ProcessExecutor
      */
     private $processExecutor;
+    /**
+     * @var string|false
+     */
+    private $wordpressConsole;
+    /**
+     * @var string
+     */
+    private $wordpressRoot;
 
     /**
      * {@inheritdoc}
@@ -161,8 +174,20 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         return $this->fs;
     }
 
+    /**
+     * @return string
+     */
+    private function getWordpressRootDirectory()
+    {
+        if (!$this->wordpressRoot) {
+            $this->wordpressRoot = $this->getFilesystem()->normalizePath($this->getProjectRoot() . '/' . $this->getComposer()->getPackage()->getExtra()[self::$wordpressDirectories['install']['key']]);
+        }
+        return $this->wordpressRoot;
+    }
+
     public function onCreateProject()
     {
+        $this->configuredComponents = [];
         $this->variables = [];
         if ($this->getComposer()->getPackage()->getPrettyName() === 'flying/wordpress-composer') {
             // Look if we have answers.json file around
@@ -185,6 +210,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         }
         $this->configureComposer();
         $this->createWordpressConfig();
+        $this->installWordpress();
     }
 
     /**
@@ -453,9 +479,11 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
 
             $composerJson->write($config);
             $io->write('<info>composer.json is successfully updated</info>');
+            $this->configuredComponents['composer'] = $config;
 
             // Create .gitignore
             file_put_contents($this->getProjectRoot() . '/.gitignore', implode("\n", $gitIgnore));
+            $this->configuredComponents['gitignore'] = $gitIgnore;
         } catch (\Exception $e) {
             $this->getIO()->writeError('composer.json configuration failed due to exception: ' . $e->getMessage());
         }
@@ -525,12 +553,14 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 'LOGGED_IN_SALT',
                 'NONCE_SALT',
             ];
+            $this->configuredComponents['auth-keys'] = [];
             foreach ($keysAndSalts as $key) {
                 $value = $this->generateSecureString(64, true);
                 $this->variables[$key] = [
                     'type'  => 'constant',
                     'value' => $value,
                 ];
+                $this->configuredComponents['auth-keys'][$key] = $value;
             }
 
             // Database tables prefix should be defined in any way
@@ -623,45 +653,25 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                             'value' => (string)$value,
                         ];
                         $this->variables[$var['name']] = $result;
+                        $this->configuredComponents['database'][$var['name']] = $var;
                     }
                 }
 
                 // Site URL configuration
                 if ($io->askConfirmation('<info>Do you want to configure site URL parameters?</info> [<comment>Y,n</comment>]: ', true)) {
-                    $siteUrl = $io->askAndValidate('Enter URL of home page of this Wordpress site: ', function ($value) use ($io) {
-                        if (strpos($value, '://') === false) {
-                            $value = 'http://' . $value;
-                        }
-                        $p = parse_url($value);
-                        if (!is_array($p)) {
-                            throw new \InvalidArgumentException('Invalid URL');
-                        }
-                        if (!array_key_exists('host', $p)) {
-                            throw new \InvalidArgumentException('Invalid URL, no host name is found');
-                        }
-                        if (array_key_exists('query', $p)) {
-                            throw new \InvalidArgumentException('Invalid URL, no query string should be included');
-                        }
-                        if (array_key_exists('user', $p) || array_key_exists('pass', $p)) {
-                            throw new \InvalidArgumentException('Invalid URL, no access credentials should be included');
-                        }
-                        if (!array_key_exists('scheme', $p)) {
-                            $p['scheme'] = 'http';
-                        }
-                        if (array_key_exists('path', $p)) {
-                            $p['path'] = rtrim($p['path'], '/');
-                        }
-                        return $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : '') . (array_key_exists('path', $p) ? ':' . $p['path'] : '/');
-                    });
+                    $siteUrl = $io->askAndValidate('Enter URL of home page of this Wordpress site: ', [$this, 'validateUrl']);
+                    $this->configuredComponents['site-urls'] = [];
                     $this->variables['WP_SITEURL'] = [
                         'type'  => 'constant',
                         'value' => $siteUrl,
                     ];
+                    $this->configuredComponents['site-urls']['WP_SITEURL'] = $siteUrl;
                     $p = parse_url($siteUrl);
                     $this->variables['WP_HOME'] = [
                         'type'  => 'constant',
                         'value' => $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : ''),
                     ];
+                    $this->configuredComponents['site-urls']['WP_HOME'] = $this->variables['WP_HOME']['value'];
                 }
             } else {
                 $io->write('<comment>Wordpress configuration file is created, but no details was configured because installation is running in non-interactive mode. You need to review and update it by yourself</comment>');
@@ -737,6 +747,40 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     }
 
     /**
+     * Validate and normalize URL received from interactive question
+     *
+     * @param string $value
+     * @return string
+     * @throws \InvalidArgumentException
+     */
+    public function validateUrl($value)
+    {
+        if (strpos($value, '://') === false) {
+            $value = 'http://' . $value;
+        }
+        $p = parse_url($value);
+        if (!is_array($p)) {
+            throw new \InvalidArgumentException('Invalid URL');
+        }
+        if (!array_key_exists('host', $p)) {
+            throw new \InvalidArgumentException('Invalid URL, no host name is found');
+        }
+        if (array_key_exists('query', $p)) {
+            throw new \InvalidArgumentException('Invalid URL, no query string should be included');
+        }
+        if (array_key_exists('user', $p) || array_key_exists('pass', $p)) {
+            throw new \InvalidArgumentException('Invalid URL, no access credentials should be included');
+        }
+        if (!array_key_exists('scheme', $p)) {
+            $p['scheme'] = 'http';
+        }
+        if (array_key_exists('path', $p)) {
+            $p['path'] = rtrim($p['path'], '/');
+        }
+        return $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : '') . (array_key_exists('path', $p) ? ':' . $p['path'] : '/');
+    }
+
+    /**
      * Generate secure string with given criteria
      *
      * @param int $length
@@ -794,6 +838,218 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
         } while (strlen($string) < $length);
         return $string;
+    }
+
+    /**
+     * Install Wordpress
+     */
+    private function installWordpress()
+    {
+        try {
+            $io = $this->getIO();
+            if (!$this->isWordpressInstalled()) {
+                if ($io->isInteractive()) {
+                    $requiredComponents = ['auth-keys', 'database'];
+                    /** @noinspection NotOptimalIfConditionsInspection */
+                    if (count(array_intersect(array_keys($this->configuredComponents), $requiredComponents)) === count($requiredComponents) &&
+                        $io->askConfirmation('<info>Do you want to install Wordpress?</info> [<comment>Y,n</comment>]: ', true)
+                    ) {
+                        $installQuestionnaire = [
+                            [
+                                'param'     => 'url',
+                                'question'  => 'Enter site URL',
+                                'default'   => function () {
+                                    if (array_key_exists('site-urls', $this->configuredComponents) && array_key_exists('WP_SITEURL', $this->configuredComponents['site-urls'])) {
+                                        return $this->configuredComponents['site-urls']['WP_SITEURL'];
+                                    }
+                                    return null;
+                                },
+                                'validator' => [$this, 'validateUrl'],
+                            ],
+                            [
+                                'param'    => 'title',
+                                'question' => 'Enter site title',
+                                'default'  => '',
+                            ],
+                            [
+                                'param'     => 'admin_user',
+                                'question'  => 'Enter admin login',
+                                'default'   => 'admin',
+                                'validator' => function ($value) {
+                                    $value = trim($value);
+                                    if (!preg_match('/^[a-z0-9\_\.\-\@]{1,64}$/', $value)) {
+                                        throw new \InvalidArgumentException('Invalid login, it should contain only lower case characters, numbers and symbols "_", "-", ".", "@"');
+                                    }
+                                    return $value;
+                                }
+                            ],
+                            [
+                                'param'    => 'admin_password',
+                                'question' => 'Enter admin password',
+                                'default'  => $this->generateSecureString(20, false),
+                            ],
+                            [
+                                'param'     => 'admin_email',
+                                'question'  => 'Enter admin email',
+                                'default'   => function () {
+                                    if (array_key_exists('composer', $this->configuredComponents) && array_key_exists('authors', $this->configuredComponents['composer'])) {
+                                        $t = $this->configuredComponents['composer']['authors'];
+                                        $t = array_shift($t);
+                                        return $t['email'];
+                                    }
+                                    return null;
+                                },
+                                'validator' => function ($value) {
+                                    $value = filter_var($value, FILTER_VALIDATE_EMAIL);
+                                    if ($value === false) {
+                                        throw new \InvalidArgumentException('Invalid email address');
+                                    }
+                                    return $value;
+                                }
+                            ],
+                        ];
+                        $installArgs = [];
+                        foreach ($installQuestionnaire as $var) {
+                            $default = array_key_exists('default', $var) ? $var['default'] : null;
+                            if (is_callable($default)) {
+                                $default = $default();
+                            }
+                            if (array_key_exists('question', $var)) {
+                                $question = $var['question'] . ($default !== null ? ' [<comment>' . $default . '</comment>]' : '') . ': ';
+                                if (array_key_exists('validator', $var)) {
+                                    $value = $io->askAndValidate($question, $var['validator'], null, $default);
+                                } else {
+                                    $value = $io->ask($question, $default);
+                                }
+                            } else {
+                                $value = $default;
+                            }
+                            if (array_key_exists('param', $var)) {
+                                $installArgs[$var['param']] = $value;
+                            } else {
+                                $installArgs[] = $value;
+                            }
+                        }
+                        // Install Wordpress
+                        $io->write('<info>Installing Wordpress...</info>');
+                        $this->runWpCliCommand('db', 'create', [], $output, $error);
+                        if ($this->runWpCliCommand('core', 'install', $installArgs, $output, $error)) {
+                            $io->write('<comment>Wordpress is successfully installed</comment>');
+                        } else {
+                            $io->writeError('<error>Failed to install Wordpress</error>');
+                        }
+                    }
+                } else {
+                    $command = str_replace($this->getProjectRoot() . '/', '', $this->getWordpressConsole());
+                    $command = Platform::isWindows() ? str_replace('/', '\\', $command) : './' . $command;
+                    $command .= ' core install';
+                    $io->write(sprintf('<info>Wordpress installation is skipped because installation is running in non-interactive mode. Run install either through web or by preparing all required configuration parameters and calling <comment>%s</comment></info>', $command));
+                }
+            } else {
+                $io->write('<comment>Wordpress is already installed</comment>');
+            }
+        } catch (\Exception $e) {
+            $this->getIO()->writeError(sprintf('<error>Wordpress installation failed: %s</error>', $e->getMessage()));
+        }
+    }
+
+    /**
+     * Get path to Wordpress console or false if it is not available
+     *
+     * @return string|false
+     */
+    private function getWordpressConsole()
+    {
+        if ($this->wordpressConsole === null) {
+            $this->wordpressConsole = false;
+            try {
+                $binDir = $this->getComposer()->getConfig()->get('bin-dir');
+                $filename = 'wp';
+                if (Platform::isWindows()) {
+                    $filename .= '.bat';
+                }
+                $consolePath = $binDir . '/' . $filename;
+                if (file_exists($consolePath) && (Platform::isWindows() || is_executable($consolePath))) {
+                    $this->wordpressConsole = $consolePath;
+                }
+            } catch (\Exception $e) {
+
+            }
+            if (!$this->wordpressConsole) {
+                $this->getIO()->writeError('<error>WP CLI binary is not found</error>', true, IOInterface::DEBUG);
+            }
+        }
+        return $this->wordpressConsole;
+    }
+
+    /**
+     * Run given WP CLI command with given arguments
+     *
+     * @param string $section
+     * @param string $command
+     * @param array $args
+     * @param array $output
+     * @param array $error
+     * @return boolean
+     */
+    private function runWpCliCommand($section, $command, array $args = [], &$output, &$error)
+    {
+        $output = [];
+        $error = [];
+        $cli = $this->getWordpressConsole();
+        if (!$cli) {
+            return false;
+        }
+        $io = $this->getIO();
+        try {
+            $cmd = [];
+            /** @noinspection AdditionOperationOnArraysInspection */
+            $parts = [
+                    $cli,
+                    $section,
+                    $command,
+                    'quiet'    => null,
+                    'no-color' => null,
+                ] + $args;
+            foreach ($parts as $key => $arg) {
+                if ($arg !== null) {
+                    $arg = ProcessExecutor::escape($arg);
+                }
+                if (is_string($key)) {
+                    $cmd[] = ((strpos($key, '-') === 0) ?: '--' . $key) . (($arg !== null) ? '=' . $arg : '');
+                } elseif ($arg !== null) {
+                    $cmd[] = $arg;
+                }
+            }
+            $cmd = implode(' ', $cmd);
+            $cmdout = '';
+            $pe = $this->getProcessExecutor();
+            $exitCode = $pe->execute($cmd, $cmdout, $this->getWordpressRootDirectory());
+            $output = $pe->splitLines($cmdout);
+            /** @noinspection ReferenceMismatchInspection */
+            $io->write(implode("\n", $output), true, IOInterface::DEBUG);
+            $error = $pe->splitLines($pe->getErrorOutput());
+            $success = (int)$exitCode === 0;
+            if (!$success) {
+                /** @noinspection ReferenceMismatchInspection */
+                $io->writeError(implode("\n", $error), true, IOInterface::DEBUG);
+            }
+            return $success;
+        } catch (\Exception $e) {
+            $io->writeError(sprintf('<error>WP CLI command "%s" is failed</error>', $command));
+            $io->writeError(sprintf('<error>Exception: %s</error>', $e->getMessage()), true, IOInterface::DEBUG);
+            return false;
+        }
+    }
+
+    /**
+     * Determine if Wordpress is installed
+     *
+     * @return boolean
+     */
+    private function isWordpressInstalled()
+    {
+        return $this->runWpCliCommand('core', 'is-installed', [], $output, $error);
     }
 
     /**
