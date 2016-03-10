@@ -92,6 +92,14 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      * @var array
      */
     private $variables = [];
+    /**
+     * @var Filesystem
+     */
+    private $fs;
+    /**
+     * @var ProcessExecutor
+     */
+    private $processExecutor;
 
     /**
      * {@inheritdoc}
@@ -130,6 +138,28 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         return $this->root;
     }
 
+    /**
+     * @return ProcessExecutor
+     */
+    private function getProcessExecutor()
+    {
+        if (!$this->processExecutor) {
+            $this->processExecutor = new ProcessExecutor($this->getIO());
+        }
+        return $this->processExecutor;
+    }
+
+    /**
+     * @return Filesystem
+     */
+    private function getFilesystem()
+    {
+        if (!$this->fs) {
+            $this->fs = new Filesystem($this->getProcessExecutor());
+        }
+        return $this->fs;
+    }
+
     public function onCreateProject()
     {
         $this->variables = [];
@@ -147,7 +177,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         try {
             $composer = $this->getComposer();
-            $fs = new Filesystem();
+            $fs = $this->getFilesystem();
             $projectRoot = $fs->normalizePath($this->getProjectRoot());
             // By this time we already have Wordpress installed. However if we currently have different path for it - we need to move it to new location
             $wpInstallPath = null;
@@ -486,7 +516,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     $package = $this->getComposer()->getRepositoryManager()->getLocalRepository()->findPackage('paragonie/random_compat', new EmptyConstraint());
                     if ($package instanceof PackageInterface) {
                         $installPath = $this->getComposer()->getInstallationManager()->getInstallPath($package);
-                        $fs = new Filesystem();
+                        $fs = $this->getFilesystem();
                         foreach ($package->getAutoload() as $type => $includes) {
                             if ($type !== 'files') {
                                 continue;
@@ -653,7 +683,6 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
 
             // Generate configuration files
-            $executor = new ProcessExecutor($io);
             foreach (self::$configurationFiles as $configId => $configuration) {
                 if ($configId === 'local' && !$io->isInteractive()) {
                     // Local configuration is useless without interactive questionnaire
@@ -709,7 +738,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     throw new \RuntimeException('Failed to write ' . $configuration['file']);
                 }
                 $tmp = tempnam(sys_get_temp_dir(), 'wpskt');
-                $exitcode = $executor->execute(sprintf('%s -l %s > %s', PHP_BINARY, escapeshellarg($configPath), $tmp));
+                $exitcode = $this->getProcessExecutor()->execute(sprintf('%s -l %s > %s', PHP_BINARY, escapeshellarg($configPath), $tmp));
                 unlink($tmp);
                 if ($exitcode !== 0) {
                     unlink($configPath);
