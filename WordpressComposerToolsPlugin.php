@@ -13,6 +13,7 @@ use Composer\Plugin\PluginInterface;
 use Composer\Semver\Constraint\EmptyConstraint;
 use Composer\Util\Filesystem;
 use Composer\Util\ProcessExecutor;
+use Flying\Composer\Plugin\IO\AutomatedIO;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
@@ -164,6 +165,22 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         $this->variables = [];
         if ($this->getComposer()->getPackage()->getPrettyName() === 'flying/wordpress-composer') {
+            // Look if we have answers.json file around
+            $paths = [
+                $this->getProjectRoot(),
+                $this->getProjectRoot() . '/..',
+            ];
+            foreach ($paths as $path) {
+                $path .= '/answers.json';
+                $path = $this->getFilesystem()->normalizePath($path);
+                $json = new JsonFile($path);
+                if ($json->exists()) {
+                    $json = $json->read();
+                    if (is_array($json)) {
+                        $this->io = new AutomatedIO($this->getIO(), $json);
+                    }
+                }
+            }
             $this->configureWordpressDirectories();
         }
         $this->configureComposer();
