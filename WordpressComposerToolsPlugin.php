@@ -508,40 +508,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 'LOGGED_IN_SALT',
                 'NONCE_SALT',
             ];
-            if (!function_exists('random_int')) {
-                // By default we use secure random_int() function to generate keys and salts
-                // However it is only available in PHP7 natively, so for PHP5 we should try to use its PHP version from include compatibility package
-                // Since at a time of package creation no packages are loaded - let's try to load it by ourselves
-                try {
-                    $package = $this->getComposer()->getRepositoryManager()->getLocalRepository()->findPackage('paragonie/random_compat', new EmptyConstraint());
-                    if ($package instanceof PackageInterface) {
-                        $installPath = $this->getComposer()->getInstallationManager()->getInstallPath($package);
-                        $fs = $this->getFilesystem();
-                        foreach ($package->getAutoload() as $type => $includes) {
-                            if ($type !== 'files') {
-                                continue;
-                            }
-                            foreach ((array)$includes as $include) {
-                                $path = $fs->normalizePath($installPath . '/' . $include);
-                                if (file_exists($path)) {
-                                    /** @noinspection PhpIncludeInspection */
-                                    include_once $path;
-                                }
-                            }
-                        }
-                    }
-                } catch (\Exception $e) {
-
-                }
-            }
             foreach ($keysAndSalts as $key) {
-                $value = '';
-                do {
-                    $c = chr(function_exists('random_int') ? random_int(33, 126) : mt_rand(33, 126));
-                    if (!in_array($c, ["'", '"', '\\'], true)) {
-                        $value .= $c;
-                    }
-                } while (strlen($value) < 64);
+                $value = $this->generateSecureString(64, true);
                 $this->variables[$key] = [
                     'type'  => 'constant',
                     'value' => $value,
@@ -749,6 +717,66 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         } catch (\Exception $e) {
             $this->getIO()->writeError(sprintf('<error>Wordpress configuration files generation failed: %s</error>', $e->getMessage()));
         }
+    }
+
+    /**
+     * Generate secure string with given criteria
+     *
+     * @param int $length
+     * @param boolean $strong
+     * @return string
+     */
+    private function generateSecureString($length = 64, $strong = true)
+    {
+        if (!function_exists('random_int')) {
+            // By default we use secure random_int() function to generate keys and salts
+            // However it is only available in PHP7 natively, so for PHP5 we should try to use its PHP version from include compatibility package
+            // Since at a time of package creation no packages are loaded - let's try to load it by ourselves
+            try {
+                $package = $this->getComposer()->getRepositoryManager()->getLocalRepository()->findPackage('paragonie/random_compat', new EmptyConstraint());
+                if ($package instanceof PackageInterface) {
+                    $installPath = $this->getComposer()->getInstallationManager()->getInstallPath($package);
+                    $fs = $this->getFilesystem();
+                    foreach ($package->getAutoload() as $type => $includes) {
+                        if ($type !== 'files') {
+                            continue;
+                        }
+                        foreach ((array)$includes as $include) {
+                            $path = $fs->normalizePath($installPath . '/' . $include);
+                            if (file_exists($path)) {
+                                /** @noinspection PhpIncludeInspection */
+                                include_once $path;
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+
+            }
+        }
+        $chars = range(chr(33), chr(126));
+        if (!$strong) {
+            $chars = [];
+            $symbols = [range('!', '.'), range(':', '@'), range('[', '_'), range('{', '~')];
+            $letters = [range('0', '9'), range('A', 'Z'), range('a', 'z')];
+            foreach ($symbols as $r) {
+                $chars[] = $r;
+                /** @noinspection DisconnectedForeachInstructionInspection */
+                foreach ($letters as $l) {
+                    $chars[] = $l;
+                }
+            }
+            $chars = call_user_func_array('array_merge', $chars);
+        }
+        $count = count($chars);
+        $string = '';
+        do {
+            $c = $chars[function_exists('random_int') ? random_int(0, $count - 1) : mt_rand(0, $count - 1)];
+            if (!in_array($c, ["'", '"', '\\'], true)) {
+                $string .= $c;
+            }
+        } while (strlen($string) < $length);
+        return $string;
     }
 
     /**
