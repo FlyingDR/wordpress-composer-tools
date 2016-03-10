@@ -105,7 +105,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     /**
      * @return Composer
      */
-    public function getComposer()
+    private function getComposer()
     {
         return $this->composer;
     }
@@ -113,7 +113,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     /**
      * @return IOInterface
      */
-    public function getIO()
+    private function getIO()
     {
         return $this->io;
     }
@@ -121,7 +121,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     /**
      * @return string
      */
-    public function getProjectRoot()
+    private function getProjectRoot()
     {
         if (!$this->root) {
             /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
