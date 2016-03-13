@@ -2,6 +2,7 @@
 
 namespace Flying\Composer\Plugin;
 
+use Composer\Command\CreateProjectCommand;
 use Composer\Composer;
 use Composer\Config;
 use Composer\EventDispatcher\EventSubscriberInterface;
@@ -152,6 +153,10 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      * @var string
      */
     private $projectContentDir;
+    /**
+     * @var boolean
+     */
+    private $isCreatingProject;
 
     /**
      * {@inheritdoc}
@@ -265,6 +270,29 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         return (($info['root'] === 'wp') ? $this->getWordpressContentDirectory() : $this->getProjectContentDirectory()) . '/' . $info['dir'];
     }
 
+    /**
+     * Determine if we're into "create-project" command
+     *
+     * @return boolean
+     */
+    private function isCreatingProject()
+    {
+        if ($this->isCreatingProject === null) {
+            $this->isCreatingProject = false;
+            $backtrace = debug_backtrace();
+            foreach ($backtrace as $item) {
+                if (!array_key_exists('object', $item)) {
+                    continue;
+                }
+                if ($item['object'] instanceof CreateProjectCommand) {
+                    $this->isCreatingProject = true;
+                    break;
+                }
+            }
+        }
+        return $this->isCreatingProject;
+    }
+
     public function onCreateProject()
     {
         $this->configuredComponents = [];
@@ -291,6 +319,18 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         $this->configureComposer();
         $this->createWordpressConfig();
         $this->installWordpress();
+        $this->handleWordpressModules();
+    }
+
+    public function onPostInstall()
+    {
+        if (!$this->isCreatingProject()) {
+            $this->handleWordpressModules();
+        }
+    }
+
+    public function onPostUpdate()
+    {
         $this->handleWordpressModules();
     }
 
@@ -1514,6 +1554,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         return [
             'post-create-project-cmd' => 'onCreateProject',
+            'post-install-cmd'        => 'onPostInstall',
+            'post-update-cmd'         => 'onPostUpdate',
         ];
     }
 }
