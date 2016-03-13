@@ -293,11 +293,21 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         return $this->isCreatingProject;
     }
 
+    /**
+     * Determine if we're operating on own project
+     *
+     * @return boolean
+     */
+    private function isOwnProject()
+    {
+        return $this->getComposer()->getPackage()->getPrettyName() === 'flying/wordpress-composer';
+    }
+
     public function onCreateProject()
     {
         $this->configuredComponents = [];
         $this->variables = [];
-        if ($this->getComposer()->getPackage()->getPrettyName() === 'flying/wordpress-composer') {
+        if ($this->isOwnProject()) {
             // Look if we have answers.json file around
             $paths = [
                 $this->getProjectRoot(),
@@ -324,14 +334,16 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
 
     public function onPostInstall()
     {
-        if (!$this->isCreatingProject()) {
+        if (!$this->isCreatingProject() && !$this->isOwnProject()) {
             $this->handleWordpressModules();
         }
     }
 
     public function onPostUpdate()
     {
-        $this->handleWordpressModules();
+        if (!$this->isOwnProject()) {
+            $this->handleWordpressModules();
+        }
     }
 
     /**
