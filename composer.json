@@ -15,7 +15,8 @@
         "paragonie/random_compat": "^1.1",
         "johnpbloch/wordpress": "*",
         "wp-cli/wp-cli": "^0.22",
-        "composer/installers": "^1.0"
+        "composer/installers": "^1.0",
+        "composer/semver": "^1.0"
     },
     "autoload": {
         "psr-4": {
