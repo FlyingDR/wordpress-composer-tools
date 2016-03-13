@@ -1124,10 +1124,10 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             if (is_dir($srcDir) && !$this->isSymlink($srcDir)) {
                 $fs->rename($srcDir, $projectDir);
             }
+            $this->convertWordpressModules($type, $config);
             if (!$this->isSymlink($srcDir)) {
                 $this->symlink($srcDir, $projectDir);
             }
-            $this->convertWordpressModules($type, $config);
         }
         if (sha1(serialize($config)) !== $configHash) {
             try {
@@ -1341,7 +1341,16 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         }
 
         // Build new directory with symlinks to Wordpress modules 
-        $fs->emptyDirectory($modulesDir);
+        $fs->ensureDirectoryExists($modulesDir);
+        $dir = new \DirectoryIterator($modulesDir);
+        /** @var \SplFileInfo $file */
+        foreach ($dir as $file) {
+            if (strpos($file->getBasename(), '.') === 0) {
+                continue;
+            } elseif ($file->isDir() || $this->isSymlink($file->getPathname())) {
+                $fs->remove($file->getPathname());
+            }
+        }
         if (is_dir($wpModulesDir)) {
             $dir = new \DirectoryIterator($wpModulesDir);
             /** @var \SplFileInfo $file */
