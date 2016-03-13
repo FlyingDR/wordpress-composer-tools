@@ -1178,11 +1178,12 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             'composer'  => [],
             'wordpress' => [],
         ];
-        $haveUpdates = false;
+        $visibleModules = [];
+        $composerUpdateSuggested = false;
         // Collect registered Composer modules
         foreach ($this->getComposer()->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
             if (strpos($package->getName(), $modulePrefix) === 0) {
-                $availableModules['composer'][$package->getName()] = $package->getVersion();
+                $availableModules['composer'][str_replace($modulePrefix, '', $package->getName())] = $package->getVersion();
             }
         }
 
@@ -1198,146 +1199,171 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
         }
 
-        // Get list of new modules inside Wordpress modules directory
+        $conflictingNames = array_intersect_key($availableModules['composer'], $availableModules['wordpress']);
+        if (count($conflictingNames)) {
+            foreach ($conflictingNames as $module => $version) {
+                $io->writeError(sprintf('<info>Wordpress %s <comment>%s</comment> is available both as Composer package and custom Wordpress %s. <error>You need to resolve conflict</error></info>', $typeName, $module, $typeName));
+            }
+            return false;
+        }
+
+        // Get list of modules inside Wordpress modules directory
         if (is_dir($modulesDir)) {
             $dir = new \DirectoryIterator($modulesDir);
             /** @var \SplFileInfo $file */
             foreach ($dir as $file) {
-                if ($file->isLink() || (!$file->isDir()) || strpos($file->getBasename(), '.') === 0 || $fs->isJunction($file->getPathname())) {
+                if ((!$file->isDir()) || strpos($file->getBasename(), '.') === 0 || $this->isSymlink($file->getPathname())) {
                     continue;
                 }
                 $module = $file->getBasename();
                 foreach ($availableModules as $type => $modules) {
                     if (array_key_exists($module, $modules)) {
-                        $updatedModules[$type][] = null;
-                        $haveUpdates = true;
+                        $updatedModules[$type][$module] = null;
                         $module = null;
                         break;
                     }
                 }
                 if ($module !== null) {
                     $updatedModules['new'][$module] = null;
-                    $haveUpdates = true;
                 }
             }
         }
-        if ($haveUpdates) {
-            // We have something to do
-            $composerUpdateSuggested = false;
-            // Get list of modules that are visible for Wordpress along with their versions
-            if (!$this->runWpCliCommand(self::$wordpressModules[$moduleType]['wpcli_command'], 'list', [], $output, $error)) {
-                $io->writeError(sprintf('<error>Failed to get list of installed Wordpress %ss</error>', $typeName));
+        // Get list of modules that are visible for Wordpress along with their versions
+        if (!$this->runWpCliCommand(self::$wordpressModules[$moduleType]['wpcli_command'], 'list', [], $output, $error)) {
+            $io->writeError(sprintf('<error>Failed to get list of installed Wordpress %ss</error>', $typeName));
+        }
+        $indexes = [
+            'name'    => null,
+            'version' => null,
+        ];
+        foreach ($output as $line) {
+            if (strpos($line, '+-') === 0) {
+                continue;
             }
-            $indexes = [
-                'name'    => null,
-                'version' => null,
-            ];
-            foreach ($output as $line) {
-                if (strpos($line, '+-') === 0) {
-                    continue;
+            $parts = explode('|', $line);
+            array_walk($parts, function (&$v) {
+                $v = trim($v);
+            });
+            if ($indexes['name'] === null) {
+                foreach ($indexes as $key => &$index) {
+                    $index = array_search($key, $parts, true);
                 }
-                $parts = explode('|', $line);
-                array_walk($parts, function (&$v) {
-                    $v = trim($v);
-                });
-                if ($indexes['name'] === null) {
-                    foreach ($indexes as $key => &$index) {
-                        $index = array_search($key, $parts, true);
-                    }
-                    unset($index);
-                    foreach ($indexes as $key => $i) {
-                        if ($i === false) {
-                            $io->writeError(sprintf('<error>Possibly unsupported output of WP CLI "%s list" command, unable to find "%s" column position</error>', $moduleType, $key));
-                            return false;
-                        }
-                    }
-                    continue;
-                }
-                $module = $parts[$indexes['name']];
-                $version = $parts[$indexes['version']];
-                $found = false;
-                foreach ($updatedModules as $type => $modules) {
-                    if (array_key_exists($module, $modules)) {
-                        $updatedModules[$type][$module] = $version;
-                        $found = true;
-                        break;
+                unset($index);
+                foreach ($indexes as $key => $i) {
+                    if ($i === false) {
+                        $io->writeError(sprintf('<error>Possibly unsupported output of WP CLI "%s list" command, unable to find "%s" column position</error>', $moduleType, $key));
+                        return false;
                     }
                 }
-                if (!$found) {
-                    $io->writeError(sprintf('<info>Wordpress %s <comment>%s</comment> is found in filesystem but not known by Wordpress. Treating as custom Wordpress %s</info>', $typeName, $module, $typeName));
-                    $updatedModules['wordpress'][$module] = $version;
-                }
+                continue;
             }
+            $visibleModules[$parts[$indexes['name']]] = $parts[$indexes['version']];
+        }
 
-            // If there is some new Wordpress modules - check if they can be handled by Composer and update them accordingly
-            $composer = $this->getComposer();
-            $repositories = $composer->getRepositoryManager()->getRepositories();
-            $repositories[] = $composer->getRepositoryManager()->getLocalRepository();
-            /** @noinspection ReferenceMismatchInspection */
-            if (array_key_exists('repositories', $composerConfig)) {
-                foreach ($composerConfig['repositories'] as $repository) {
-                    $repositories[] = RepositoryFactory::createRepo($io, Factory::createConfig($io), $repository);
-                }
+        // If there is some new Wordpress modules - check if they can be handled by Composer and update them accordingly
+        $composer = $this->getComposer();
+        $repositories = $composer->getRepositoryManager()->getRepositories();
+        $repositories[] = $composer->getRepositoryManager()->getLocalRepository();
+        /** @noinspection ReferenceMismatchInspection */
+        if (array_key_exists('repositories', $composerConfig)) {
+            foreach ($composerConfig['repositories'] as $repository) {
+                $repositories[] = RepositoryFactory::createRepo($io, Factory::createConfig($io), $repository);
             }
-            $repositories = new CompositeRepository($repositories);
-            foreach ($updatedModules['new'] as $module => $version) {
-                if ($version === null) {
-                    $io->writeError(sprintf('<info>Wordpress %s <comment>%s</comment> is found in filesystem but not known by Wordpress. Treating as custom Wordpress %s</info>', $typeName, $module, $typeName));
-                    $updatedModules['wordpress'][$module] = $version;
-                    continue;
+        }
+        $repositories = new CompositeRepository($repositories);
+        foreach ($updatedModules['new'] as $module => $version) {
+            if (!array_key_exists($module, $visibleModules)) {
+                $io->writeError(sprintf('<info>Wordpress %s <comment>%s</comment> is found in filesystem but not known by Wordpress. Treating as custom Wordpress %s</info>', $typeName, $module, $typeName));
+                $updatedModules['wordpress'][$module] = $version;
+                continue;
+            }
+            if ($version === null) {
+                $version = $visibleModules[$module];
+            }
+            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
+            $package = $repositories->findPackage($modulePrefix . $module, new Constraint('>=', $version));
+            if ($package instanceof PackageInterface) {
+                // This package is available through Composer, update Composer configuration
+                /** @noinspection ReferenceMismatchInspection */
+                if (!array_key_exists('require', $composerConfig)) {
+                    $composerConfig['require'] = [];
                 }
-                /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-                $package = $repositories->findPackage($modulePrefix . $module, new Constraint('>=', $version));
-                if ($package instanceof PackageInterface) {
-                    // This package is available through Composer, update Composer configuration
-                    /** @noinspection ReferenceMismatchInspection */
-                    if (!array_key_exists('require', $composerConfig)) {
-                        $composerConfig['require'] = [];
-                    }
-                    if (!array_key_exists($package->getName(), $composerConfig['require'])) {
-                        $composerConfig['require'][$package->getName()] = $this->buildVersionConstraint($package->getVersion());
-                        $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> version <comment>%s</comment> is converted into Composer package <comment>%s</comment> with <comment>%s</comment> version constraint</info>', $typeName, $module, $version, $package->getName(), $composerConfig['require'][$package->getName()]));
-                        $composerUpdateSuggested = true;
+                if (!array_key_exists($package->getName(), $composerConfig['require'])) {
+                    $composerConfig['require'][$package->getName()] = $this->buildVersionConstraint($package->getVersion());
+                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> version <comment>%s</comment> is converted into Composer package <comment>%s</comment> with <comment>%s</comment> version constraint</info>', $typeName, $module, $version, $package->getName(), $composerConfig['require'][$package->getName()]));
+                    $composerUpdateSuggested = true;
+                }
+            } else {
+                // This package is not available through Composer, treat it as custom Wordpress package
+                $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> version <comment>%s</comment> is not available as Composer package, storing as custom %s</info>', $typeName, $module, $version, $typeName));
+                $updatedModules['wordpress'][$module] = $version;
+            }
+        }
+
+        foreach ($updatedModules['composer'] as $module => $version) {
+            if (!array_key_exists($module, $visibleModules)) {
+                // Module is most likely removed by Wordpress, ask what need to be done in this case
+                $packageId = $modulePrefix . $module;
+                if ($io->isInteractive()) {
+                    if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
+                        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
+                        $fs->removeDirectory($composerModulesDir . '/' . $module);
+                        unset($composerConfig['require'][$packageId]);
                     }
                 } else {
-                    // This package is not available through Composer, treat it as custom Wordpress package
-                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> version <comment>%s</comment> is not available as Composer package, storing as custom %s</info>', $typeName, $module, $version, $typeName));
-                    $updatedModules['wordpress'][$module] = $version;
+                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Review your Composer configuration, you may want to remove <comment>%s</comment> package in "require" section</info>', $typeName, $module, $packageId));
                 }
             }
+        }
 
-            foreach ($updatedModules['composer'] as $module => $version) {
-                if ($version === null) {
-                    // Module is most likely removed by Wordpress, ask what need to be done in this case
-                    $packageId = $modulePrefix . $module;
-                    if ($io->isInteractive()) {
-                        if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
-                            unset($composerConfig['require'][$packageId]);
-                        }
-                    } else {
-                        $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Review your Composer configuration, you may want to remove <comment>%s</comment> package in "require" section</info>', $typeName, $module, $packageId));
+        foreach ($updatedModules['wordpress'] as $module => $version) {
+            $current = $wpModulesDir . '/' . $module;
+            $new = $modulesDir . '/' . $module;
+            if (is_dir($new)) {
+                if (is_dir($current)) {
+                    $fs->remove($current);
+                    $fs->rename($new, $current);
+                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is updated from local copy installed by Wordpress</info>', $typeName, $module));
+                } else {
+                    $fs->rename($new, $current);
+                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is stored as new custom %s</info>', $typeName, $module, $typeName));
+                }
+            }
+        }
+
+        foreach ($availableModules as $type => $modules) {
+            foreach ($modules as $module => $version) {
+                if (!array_key_exists($module, $visibleModules)) {
+                    switch ($type) {
+                        case 'composer':
+                            $packageId = $modulePrefix . $module;
+                            if ($io->isInteractive()) {
+                                if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
+                                    /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
+                                    $fs->removeDirectory($composerModulesDir . '/' . $module);
+                                    unset($composerConfig['require'][$packageId]);
+                                }
+                            } else {
+                                $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Review your Composer configuration, you may want to remove <comment>%s</comment> package in "require" section</info>', $typeName, $module, $packageId));
+                            }
+                            break;
+                        case 'wordpress':
+                            if ($io->isInteractive()) {
+                                if ($io->askConfirmation(sprintf('<info>Custom Wordpress %s <comment>%s</comment> is available in project but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from project?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
+                                    /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
+                                    $fs->removeDirectory($wpModulesDir . '/' . $module);
+                                }
+                            } else {
+                                $io->write(sprintf('<info>Custom Wordpress %s <comment>%s</comment> is available in project but not visible for Wordpress, maybe it is deleted from Wordpress itself. You may want to remove it</info>', $typeName, $module));
+                            }
+                            break;
                     }
                 }
             }
+        }
 
-            foreach ($updatedModules['wordpress'] as $module => $version) {
-                $current = $wpModulesDir . '/' . $module;
-                $new = $modulesDir . '/' . $module;
-                if (is_dir($new)) {
-                    if (is_dir($current)) {
-                        $fs->remove($current);
-                        $fs->rename($new, $current);
-                        $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is updated from local copy installed by Wordpress</info>', $typeName, $module));
-                    } else {
-                        $fs->rename($new, $current);
-                        $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is stored as new custom %s</info>', $typeName, $module, $typeName));
-                    }
-                }
-            }
-
-            if ($composerUpdateSuggested) {
-                $io->write(sprintf('<info>Some Wordpress %ss are converted into Composer packages, consider running <comment>composer update</comment> to install them</info>', $typeName));
-            }
+        if ($composerUpdateSuggested) {
+            $io->write(sprintf('<info>Some Wordpress %ss are converted into Composer packages, consider running <comment>composer update</comment> to install them</info>', $typeName));
         }
 
         // Build new directory with symlinks to Wordpress modules 
@@ -1355,20 +1381,28 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             $dir = new \DirectoryIterator($wpModulesDir);
             /** @var \SplFileInfo $file */
             foreach ($dir as $file) {
-                if ((!$file->isDir()) || strpos($file->getBasename(), '.') === 0) {
+                if ((!$file->isDir()) || strpos($file->getBasename(), '.') === 0 || $this->isSymlink($file->getPathname())) {
                     continue;
                 }
-                $this->symlink($modulesDir . '/' . $file->getBasename(), $file->getPathname());
+                $target = $modulesDir . '/' . $file->getBasename();
+                if (file_exists($target)) {
+                    $fs->remove($target);
+                }
+                $this->symlink($target, $file->getPathname());
             }
         }
         if (is_dir($composerModulesDir)) {
             $dir = new \DirectoryIterator($composerModulesDir);
             /** @var \SplFileInfo $file */
             foreach ($dir as $file) {
-                if ((!$file->isDir()) || strpos($file->getBasename(), '.') === 0) {
+                if ((!$file->isDir()) || strpos($file->getBasename(), '.') === 0 || $this->isSymlink($file->getPathname())) {
                     continue;
                 }
-                $this->symlink($modulesDir . '/' . $file->getBasename(), $file->getPathname());
+                $target = $modulesDir . '/' . $file->getBasename();
+                if (file_exists($target)) {
+                    $fs->remove($target);
+                }
+                $this->symlink($target, $file->getPathname());
             }
         }
         return true;
