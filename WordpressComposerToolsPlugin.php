@@ -190,7 +190,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         if (!$this->root) {
             /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-            $this->root = dirname($this->getComposer()->getConfig()->get('vendor-dir'));
+            $this->root = $this->getFilesystem()->normalizePath(dirname($this->getComposer()->getConfig()->get('vendor-dir')));
         }
         return $this->root;
     }
@@ -608,6 +608,10 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 $path = sprintf('%s/%s/{$name}', $directories['content'], $dir);
                 $config['extra']['installer-paths'][$path] = [$type];
                 $gitIgnore[] = sprintf('/%s/%s', $directories['content'], $dir);
+            }
+            $root = $this->getProjectRoot();
+            foreach (self::$wordpressModules as $type => $info) {
+                $gitIgnore[] = '/' . ltrim(str_replace($root, '', $this->getWordpressModulesDirectory($type, 'project')), '/');
             }
 
             $composerJson->write($config);
