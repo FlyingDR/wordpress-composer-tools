@@ -5,9 +5,11 @@ namespace Flying\Composer\Plugin;
 use Composer\Command\CreateProjectCommand;
 use Composer\Composer;
 use Composer\Config;
+use Composer\DependencyResolver\Operation\InstallOperation;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\Factory;
 use Composer\Installer\InstallerInterface;
+use Composer\Installer\PackageEvent;
 use Composer\IO\IOInterface;
 use Composer\Json\JsonFile;
 use Composer\Package\PackageInterface;
@@ -157,6 +159,14 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      * @var boolean
      */
     private $isCreatingProject;
+    /**
+     * @var array
+     */
+    private $newPackages = [];
+    /**
+     * @var array
+     */
+    private $removedPackages = [];
 
     /**
      * {@inheritdoc}
@@ -165,6 +175,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     {
         $this->composer = $composer;
         $this->io = $io;
+        $this->newPackages = [];
+        $this->removedPackages = [];
     }
 
     /**
@@ -344,6 +356,42 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         if (!$this->isOwnProject()) {
             $this->handleWordpressModules();
         }
+    }
+
+    public function onPrePackageInstall(PackageEvent $event)
+    {
+        /** @var InstallOperation $operation */
+        $operation = $event->getOperation();
+        $package = $operation->getPackage()->getName();
+        if (!preg_match('/^wpackagist-([^\/]+)\/(.+)$/', $package, $m)) {
+            return;
+        }
+        $type = $m[1];
+        $module = $m[2];
+        if (!array_key_exists($type, $this->newPackages)) {
+            $this->newPackages[$type] = [];
+        }
+        $this->newPackages[$type][] = $module;
+    }
+
+    public function onPrePackageUninstall(PackageEvent $event)
+    {
+        /** @var InstallOperation $operation */
+        $operation = $event->getOperation();
+        $package = $operation->getPackage()->getName();
+        if (!preg_match('/^wpackagist-([^\/]+)\/(.+)$/', $package, $m)) {
+            return;
+        }
+        $type = $m[1];
+        $module = $m[2];
+        if (!array_key_exists($type, $this->removedPackages)) {
+            $this->removedPackages[$type] = [];
+        }
+        $this->removedPackages[$type][] = $module;
+        // We should remove symlink to package from Wordpress modules directory
+        // because after package itself will be removed by Composer this link will became broken
+        // and it will not be visible to DirectoryIterator
+        $this->getFilesystem()->removeDirectory($this->getWordpressModulesDirectory($type, 'project') . '/' . $module);
     }
 
     /**
@@ -1311,7 +1359,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         }
 
         foreach ($updatedModules['composer'] as $module => $version) {
-            if (!$isFreshInstall && !array_key_exists($module, $visibleModules)) {
+            if (!$isFreshInstall && !array_key_exists($module, $visibleModules) && !in_array($module, $this->newPackages[$moduleType], true)) {
                 // Module is most likely removed by Wordpress, ask what need to be done in this case
                 $packageId = $modulePrefix . $module;
                 if ($io->isInteractive()) {
@@ -1347,15 +1395,17 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     if (!array_key_exists($module, $visibleModules)) {
                         switch ($type) {
                             case 'composer':
-                                $packageId = $modulePrefix . $module;
-                                if ($io->isInteractive()) {
-                                    if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
-                                        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-                                        $fs->removeDirectory($composerModulesDir . '/' . $module);
-                                        unset($composerConfig['require'][$packageId]);
+                                if (!in_array($module, $this->newPackages[$moduleType], true)) {
+                                    $packageId = $modulePrefix . $module;
+                                    if ($io->isInteractive()) {
+                                        if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
+                                            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
+                                            $fs->removeDirectory($composerModulesDir . '/' . $module);
+                                            unset($composerConfig['require'][$packageId]);
+                                        }
+                                    } else {
+                                        $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Review your Composer configuration, you may want to remove <comment>%s</comment> package in "require" section</info>', $typeName, $module, $packageId));
                                     }
-                                } else {
-                                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Review your Composer configuration, you may want to remove <comment>%s</comment> package in "require" section</info>', $typeName, $module, $packageId));
                                 }
                                 break;
                             case 'wordpress':
@@ -1399,9 +1449,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         return true;
     }
 
-    /**            
+    /**
      * Create symlinks from given source directory into target Wordpress modules directory
-     * 
+     *
      * @param string $srcDir
      * @param string $modulesDir
      */
@@ -1628,6 +1678,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             'post-create-project-cmd' => 'onCreateProject',
             'post-install-cmd'        => 'onPostInstall',
             'post-update-cmd'         => 'onPostUpdate',
+            'pre-package-install'     => 'onPrePackageInstall',
+            'pre-package-uninstall'   => 'onPrePackageUninstall',
         ];
     }
 }
