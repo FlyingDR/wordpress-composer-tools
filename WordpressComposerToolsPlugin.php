@@ -616,8 +616,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
             $extra = $this->getComposer()->getPackage()->getExtra();
             $gitIgnore = [
-                '# Wordpress itself and related directories',
+                '# Wordpress itself and related files and directories',
             ];
+            $gitIgnore[] = '/' . self::$configurationFiles['local']['file'];
             $directories = [];
             foreach (self::$wordpressDirectories as $type => $directory) {
                 $key = $directory['key'];
