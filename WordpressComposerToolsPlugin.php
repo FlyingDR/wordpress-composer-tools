@@ -1360,7 +1360,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         }
 
         foreach ($updatedModules['composer'] as $module => $version) {
-            if (!$isFreshInstall && !array_key_exists($module, $visibleModules) && !in_array($module, $this->newPackages[$moduleType], true)) {
+            if (!$isFreshInstall && !array_key_exists($module, $visibleModules) && !in_array($module, array_key_exists($moduleType, $this->newPackages) ? $this->newPackages[$moduleType] : [], true)) {
                 // Module is most likely removed by Wordpress, ask what need to be done in this case
                 $packageId = $modulePrefix . $module;
                 if ($io->isInteractive()) {
@@ -1396,7 +1396,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     if (!array_key_exists($module, $visibleModules)) {
                         switch ($type) {
                             case 'composer':
-                                if (!in_array($module, $this->newPackages[$moduleType], true)) {
+                                if (!in_array($module, array_key_exists($moduleType, $this->newPackages) ? $this->newPackages[$moduleType] : [], true)) {
                                     $packageId = $modulePrefix . $module;
                                     if ($io->isInteractive()) {
                                         if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
