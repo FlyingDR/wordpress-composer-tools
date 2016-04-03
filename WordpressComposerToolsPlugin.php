@@ -1296,7 +1296,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 if (strpos($line, '+-') === 0) {
                     continue;
                 }
-                $parts = explode('|', $line);
+                $parts = (strpos($line, '|') !== false) ? explode('|', $line) : preg_split('/\s+/', $line, -1, PREG_SPLIT_NO_EMPTY);
                 array_walk($parts, function (&$v) {
                     $v = trim($v);
                 });
@@ -1313,7 +1313,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     }
                     continue;
                 }
-                $visibleModules[$parts[$indexes['name']]] = $parts[$indexes['version']];
+                $visibleModules[$parts[$indexes['name']]] = array_key_exists($indexes['version'], $parts) ? $parts[$indexes['version']] : null;
             }
         }
 
@@ -1574,6 +1574,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     $cli,
                     $section,
                     $command,
+                    'path'     => $this->getWordpressRootDirectory(),
                     'quiet'    => null,
                     'no-color' => null,
                 ] + $args;
