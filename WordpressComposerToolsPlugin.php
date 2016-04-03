@@ -1660,7 +1660,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             if (Platform::isWindows()) {
                 $fs->junction($source, $target);
             } else {
-                if (!$fs->relativeSymlink($target, $source)) {
+                if (!$fs->relativeSymlink($source, $target)) {
                     throw new \RuntimeException(error_get_last()['message']);
                 }
             }
