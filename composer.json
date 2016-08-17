@@ -14,7 +14,7 @@
         "composer-plugin-api": "^1.0",
         "paragonie/random_compat": "^1.1",
         "johnpbloch/wordpress": "*",
-        "wp-cli/wp-cli": "^0.22",
+        "wp-cli/wp-cli": "^0.24",
         "composer/installers": "^1.0",
         "composer/semver": "^1.0"
     },
@@ -27,6 +27,6 @@
         "class": "Flying\\Composer\\Plugin\\WordpressComposerToolsPlugin"
     },
     "require-dev": {
-        "composer/composer": "^1.0.0-beta"
+        "composer/composer": "^1.0"
     }
 }
