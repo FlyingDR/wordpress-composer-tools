@@ -14,7 +14,7 @@
         "composer-plugin-api": "^1.0",
         "paragonie/random_compat": "^1.1",
         "johnpbloch/wordpress": "*",
-        "wp-cli/wp-cli": "^0.24",
+        "wp-cli/wp-cli": "^1.0",
         "composer/installers": "^1.0",
         "composer/semver": "^1.0"
     },
