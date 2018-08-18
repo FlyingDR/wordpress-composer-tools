@@ -201,9 +201,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     private function getProjectRoot()
     {
         if (!$this->root) {
-            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
             $this->root = $this->getFilesystem()->normalizePath(dirname($this->getComposer()->getConfig()->get('vendor-dir')));
         }
+
         return $this->root;
     }
 
@@ -215,6 +215,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         if (!$this->processExecutor) {
             $this->processExecutor = new ProcessExecutor($this->getIO());
         }
+
         return $this->processExecutor;
     }
 
@@ -226,6 +227,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         if (!$this->fs) {
             $this->fs = new Filesystem($this->getProcessExecutor());
         }
+
         return $this->fs;
     }
 
@@ -235,8 +237,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     private function getWordpressRootDirectory()
     {
         if (!$this->wordpressRoot) {
-            $this->wordpressRoot = $this->getFilesystem()->normalizePath($this->getProjectRoot() . '/' . $this->getComposer()->getPackage()->getExtra()[self::$wordpressDirectories['install']['key']]);
+            $this->wordpressRoot = $this->getFilesystem()->normalizePath($this->getProjectRoot().'/'.$this->getComposer()->getPackage()->getExtra()[self::$wordpressDirectories['install']['key']]);
         }
+
         return $this->wordpressRoot;
     }
 
@@ -246,8 +249,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     private function getWordpressContentDirectory()
     {
         if (!$this->wpContentDir) {
-            $this->wpContentDir = $this->getFilesystem()->normalizePath($this->getWordpressRootDirectory() . '/wp-content');
+            $this->wpContentDir = $this->getFilesystem()->normalizePath($this->getWordpressRootDirectory().'/wp-content');
         }
+
         return $this->wpContentDir;
     }
 
@@ -257,8 +261,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     private function getProjectContentDirectory()
     {
         if (!$this->projectContentDir) {
-            $this->projectContentDir = $this->getFilesystem()->normalizePath($this->getProjectRoot() . '/' . $this->getComposer()->getPackage()->getExtra()[self::$wordpressDirectories['content']['key']]);
+            $this->projectContentDir = $this->getFilesystem()->normalizePath($this->getProjectRoot().'/'.$this->getComposer()->getPackage()->getExtra()[self::$wordpressDirectories['content']['key']]);
         }
+
         return $this->projectContentDir;
     }
 
@@ -273,13 +278,14 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     private function getWordpressModulesDirectory($moduleType, $dirType)
     {
         if (!array_key_exists($moduleType, self::$wordpressModules)) {
-            throw new \InvalidArgumentException('Unknown content type: ' . $moduleType);
+            throw new \InvalidArgumentException('Unknown content type: '.$moduleType);
         }
         if (!array_key_exists($dirType, self::$wordpressModules[$moduleType]['directories'])) {
-            throw new \InvalidArgumentException('Unknown content directory type: ' . $dirType);
+            throw new \InvalidArgumentException('Unknown content directory type: '.$dirType);
         }
         $info = self::$wordpressModules[$moduleType]['directories'][$dirType];
-        return (($info['root'] === 'wp') ? $this->getWordpressContentDirectory() : $this->getProjectContentDirectory()) . '/' . $info['dir'];
+
+        return (($info['root'] === 'wp') ? $this->getWordpressContentDirectory() : $this->getProjectContentDirectory()).'/'.$info['dir'];
     }
 
     /**
@@ -302,6 +308,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 }
             }
         }
+
         return $this->isCreatingProject;
     }
 
@@ -323,7 +330,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             // Look if we have answers.json file around
             $paths = [
                 $this->getProjectRoot(),
-                $this->getProjectRoot() . '/..',
+                $this->getProjectRoot().'/..',
             ];
             foreach ($paths as $path) {
                 $path .= '/answers.json';
@@ -367,6 +374,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             return;
         }
         $type = $m[1];
+        /** @noinspection MultiAssignmentUsageInspection */
         $module = $m[2];
         if (!array_key_exists($type, $this->newPackages)) {
             $this->newPackages[$type] = [];
@@ -383,6 +391,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             return;
         }
         $type = $m[1];
+        /** @noinspection MultiAssignmentUsageInspection */
         $module = $m[2];
         if (!array_key_exists($type, $this->removedPackages)) {
             $this->removedPackages[$type] = [];
@@ -391,7 +400,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         // We should remove symlink to package from Wordpress modules directory
         // because after package itself will be removed by Composer this link will became broken
         // and it will not be visible to DirectoryIterator
-        $this->getFilesystem()->removeDirectory($this->getWordpressModulesDirectory($type, 'project') . '/' . $module);
+        $this->getFilesystem()->removeDirectory($this->getWordpressModulesDirectory($type, 'project').'/'.$module);
     }
 
     /**
@@ -412,7 +421,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     if ($installer instanceof InstallerInterface) {
                         $path = $installer->getInstallPath($package);
                         if (!$fs->isAbsolutePath($path)) {
-                            $path = $projectRoot . '/' . $path;
+                            $path = $projectRoot.'/'.$path;
                         }
                         $path = $fs->normalizePath($path);
                         if (!$fs->isDirEmpty($path)) {
@@ -441,7 +450,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                         if ($fs->isAbsolutePath($value)) {
                             throw new \InvalidArgumentException(sprintf('%s should be defined as relative path', $title));
                         }
-                        $path = $fs->normalizePath($this->getProjectRoot() . '/' . $value);
+                        $path = $fs->normalizePath($this->getProjectRoot().'/'.$value);
                         if (strpos($path, $projectRoot) !== 0) {
                             throw new \InvalidArgumentException(sprintf('%s should reside within project root', $title));
                         }
@@ -452,6 +461,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                         if ($value !== '.' && ($dirId !== 'install' || ($wpInstallPath === null || $path !== $wpInstallPath)) && file_exists($path)) {
                             throw new \InvalidArgumentException(sprintf('%s is already exists', $title));
                         }
+
                         return preg_replace('/^\.\//', '', $fs->findShortestPath($projectRoot, $path, true));
                     }, null, $dir);
                 }
@@ -460,7 +470,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             $package->setExtra($extra);
             // If Wordpress is configured to be located into different place then it is already installed - move it
             if ($wpInstallPath) {
-                $wpTargetPath = $fs->normalizePath($projectRoot . '/' . $extra[self::$wordpressDirectories['install']['key']]);
+                $wpTargetPath = $fs->normalizePath($projectRoot.'/'.$extra[self::$wordpressDirectories['install']['key']]);
                 if ($wpInstallPath !== $wpTargetPath) {
                     $fs->rename($wpInstallPath, $wpTargetPath);
                 }
@@ -474,15 +484,16 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      * Update composer.json to prepare it to use by newly created project
      * Parts of code of this function are taken from Composer itself because of similar functionality
      *
-     * @see Composer\Command\InitCommand::interact
+     * @see \Composer\Command\InitCommand::interact
      */
     private function configureComposer()
     {
         try {
             $io = $this->getIO();
-            $composerJson = new JsonFile($this->getProjectRoot() . '/composer.json');
+            $composerJson = new JsonFile($this->getProjectRoot().'/composer.json');
             if (!$composerJson->exists()) {
                 $io->write('<comment>composer.json is not found, skipping its configuration, you need to create it later</comment>');
+
                 return;
             }
             try {
@@ -490,6 +501,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 $config = $composerJson->read();
             } catch (\RuntimeException $e) {
                 $io->write('<error>composer.json is not valid, skipping its configuration, you need to create it later</error>');
+
                 return;
             }
             $config['name'] = '';
@@ -498,24 +510,24 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             unset($config['version'], $config['type'], $config['keywords'], $config['homepage'], $config['time'], $config['license'], $config['support'], $config['require-dev']);
             if ($io->isInteractive()) {
                 $io->write('<info>composer.json will be modified now to match your project settings</info>');
-                // Get package name 
+                // Get package name
                 $git = $this->getGitConfig();
                 $name = basename($this->getProjectRoot());
                 $name = preg_replace('{(?:([a-z])([A-Z])|([A-Z])([A-Z][a-z]))}', '\\1\\3-\\2\\4', $name);
                 $name = strtolower($name);
                 if (array_key_exists('github.user', $git)) {
-                    $name = $git['github.user'] . '/' . $name;
+                    $name = $git['github.user'].'/'.$name;
                 } elseif (!empty($_SERVER['USERNAME'])) {
-                    $name = $_SERVER['USERNAME'] . '/' . $name;
+                    $name = $_SERVER['USERNAME'].'/'.$name;
                 } elseif (get_current_user()) {
-                    $name = get_current_user() . '/' . $name;
+                    $name = get_current_user().'/'.$name;
                 } else {
                     // package names must be in the format foo/bar
-                    $name = $name . '/' . $name;
+                    $name = $name.'/'.$name;
                 }
                 $name = strtolower($name);
                 $name = $io->askAndValidate(
-                    'Package name (<vendor>/<name>) [<comment>' . $name . '</comment>]: ',
+                    'Package name (<vendor>/<name>) [<comment>'.$name.'</comment>]: ',
                     function ($value) use ($name) {
                         if (null === $value) {
                             return $name;
@@ -523,7 +535,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
 
                         if (!preg_match('{^[a-z0-9_.-]+/[a-z0-9_.-]+$}', $value)) {
                             throw new \InvalidArgumentException(
-                                'The package name ' . $value . ' is invalid, it should be lowercase and have a vendor name, a forward slash, and a package name, matching: [a-z0-9_.-]+/[a-z0-9_.-]+'
+                                'The package name '.$value.' is invalid, it should be lowercase and have a vendor name, a forward slash, and a package name, matching: [a-z0-9_.-]+/[a-z0-9_.-]+'
                             );
                         }
 
@@ -540,7 +552,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
 
                 // Get package description
                 $description = '';
-                $description = $io->ask('Description [<comment>' . $description . '</comment>]: ', $description);
+                $description = $io->ask('Description [<comment>'.$description.'</comment>]: ', $description);
                 $config['description'] = $description;
                 $this->variables['package-description'] = [
                     'type'  => 'string',
@@ -556,6 +568,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                             'email' => $match['email'],
                         ];
                     }
+
                     return null;
                 };
                 $formatAuthor = function ($name, $email) {
@@ -567,7 +580,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                         $author = '';
                     }
                 }
-                $author = $io->askAndValidate('Author [<comment>' . $author . '</comment>, n to skip]: ', function ($value) use ($parseAuthor, $formatAuthor, $author) {
+                $author = $io->askAndValidate('Author [<comment>'.$author.'</comment>, n to skip]: ', function ($value) use ($parseAuthor, $formatAuthor, $author) {
                     if ($value === 'n' || $value === 'no') {
                         return null;
                     }
@@ -575,10 +588,11 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     $author = $parseAuthor($value);
                     if (!is_array($author)) {
                         throw new \InvalidArgumentException(
-                            'Invalid author string.  Must be in the format: ' .
+                            'Invalid author string.  Must be in the format: '.
                             'John Smith <john@example.com>'
                         );
                     }
+
                     return $formatAuthor($author['name'], $author['email']);
                 }, null, $author);
                 if ($author) {
@@ -618,7 +632,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             $gitIgnore = [
                 '# Wordpress itself and related files and directories',
             ];
-            $gitIgnore[] = '/' . self::$configurationFiles['local']['file'];
+            $gitIgnore[] = '/'.self::$configurationFiles['local']['file'];
             $directories = [];
             foreach (self::$wordpressDirectories as $type => $directory) {
                 $key = $directory['key'];
@@ -633,13 +647,13 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     'value' => $dir,
                 ];
                 if ($type !== 'content') {
-                    $gitIgnore[] = '/' . $dir;
+                    $gitIgnore[] = '/'.$dir;
                 }
             }
             // Ignore vendor and bin directories that are controlled by Composer
             $composerCfg = $this->getComposer()->getConfig();
             $vendorDir = $composerCfg->get('vendor-dir', Config::RELATIVE_PATHS);
-            $gitIgnore[] = '/' . $vendorDir;
+            $gitIgnore[] = '/'.$vendorDir;
             $binDir = $composerCfg->get('bin-dir', Config::RELATIVE_PATHS);
             if ($binDir !== 'vendor/bin') {
                 if (!array_key_exists('config', $config)) {
@@ -647,8 +661,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 }
                 $config['config']['bin-dir'] = $binDir;
             }
-            if (!in_array($binDir, ['', '.'], true) && strpos($binDir, $vendorDir . '/') !== 0) {
-                $gitIgnore[] = '/' . $binDir;
+            if (!in_array($binDir, ['', '.'], true) && strpos($binDir, $vendorDir.'/') !== 0) {
+                $gitIgnore[] = '/'.$binDir;
             }
             $gitIgnore[] = '';
             $gitIgnore[] = '# Directories for Wordpress plugins and themes controlled by Composer';
@@ -660,7 +674,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
             $root = $this->getProjectRoot();
             foreach (self::$wordpressModules as $type => $info) {
-                $gitIgnore[] = '/' . ltrim(str_replace($root, '', $this->getWordpressModulesDirectory($type, 'project')), '/');
+                $gitIgnore[] = '/'.ltrim(str_replace($root, '', $this->getWordpressModulesDirectory($type, 'project')), '/');
             }
 
             $composerJson->write($config);
@@ -668,17 +682,17 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             $this->configuredComponents['composer'] = $config;
 
             // Create .gitignore
-            file_put_contents($this->getProjectRoot() . '/.gitignore', implode("\n", $gitIgnore));
+            file_put_contents($this->getProjectRoot().'/.gitignore', implode("\n", $gitIgnore));
             $this->configuredComponents['gitignore'] = $gitIgnore;
         } catch (\Exception $e) {
-            $this->getIO()->writeError('composer.json configuration failed due to exception: ' . $e->getMessage());
+            $this->getIO()->writeError('composer.json configuration failed due to exception: '.$e->getMessage());
         }
     }
 
     /**
      * Taken from Composer sources
      *
-     * @see Composer\Command\InitCommand::getGitConfig
+     * @see \Composer\Command\InitCommand::getGitConfig
      * @return array
      */
     private function getGitConfig()
@@ -708,6 +722,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         } catch (\Exception $e) {
 
         }
+
         return array();
     }
 
@@ -722,8 +737,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 if ($item['type'] !== 'wordpress') {
                     continue;
                 }
-                if (file_exists($this->getProjectRoot() . '/' . $item['file'])) {
-                    $io->write('<comment>' . $item['file'] . ' configuration file is already exists, skipping</comment>');
+                if (file_exists($this->getProjectRoot().'/'.$item['file'])) {
+                    $io->write('<comment>'.$item['file'].' configuration file is already exists, skipping</comment>');
+
                     return;
                 }
             }
@@ -764,11 +780,12 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                             'question'  => 'Database hostname',
                             'default'   => 'localhost',
                             'validator' => function ($value) {
-                                if (filter_var('http://' . $value . '/', FILTER_VALIDATE_URL) === false) {
+                                if (filter_var('http://'.$value.'/', FILTER_VALIDATE_URL) === false) {
                                     throw new \InvalidArgumentException('Invalid database host name');
                                 }
+
                                 return $value;
-                            }
+                            },
                         ],
                         [
                             'name'      => 'DB_NAME',
@@ -779,8 +796,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                 if ($value !== '' && (!preg_match('/^[^\x00\xff\x5c\/\.\:]+$/i', $value))) {
                                     throw new \InvalidArgumentException('Database name can\'t contain special characters');
                                 }
+
                                 return $value;
-                            }
+                            },
                         ],
                         [
                             'name'      => 'DB_USER',
@@ -790,8 +808,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                 if (strlen($value) > 32) {
                                     throw new \InvalidArgumentException('Database user name can\'t exceed 32 characters');
                                 }
+
                                 return $value;
-                            }
+                            },
                         ],
                         [
                             'name'     => 'DB_PASSWORD',
@@ -818,14 +837,15 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                 if ($value !== '' && substr($value, -1) !== '_') {
                                     $value .= '_';
                                 }
+
                                 return $value;
-                            }
+                            },
                         ],
                     ];
                     foreach ($databaseParameters as $var) {
                         $default = array_key_exists('default', $var) ? $var['default'] : null;
                         if (array_key_exists('question', $var)) {
-                            $question = $var['question'] . ($default !== null ? ' [<comment>' . $default . '</comment>]' : '') . ': ';
+                            $question = $var['question'].($default !== null ? ' [<comment>'.$default.'</comment>]' : '').': ';
                             if (array_key_exists('validator', $var)) {
                                 $value = $io->askAndValidate($question, $var['validator'], null, $default);
                             } else {
@@ -855,7 +875,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     $p = parse_url($siteUrl);
                     $this->variables['WP_HOME'] = [
                         'type'  => 'constant',
-                        'value' => $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : ''),
+                        'value' => $p['scheme'].'://'.$p['host'].(array_key_exists('port', $p) ? ':'.$p['port'] : ''),
                     ];
                     $this->configuredComponents['site-urls']['WP_HOME'] = $this->variables['WP_HOME']['value'];
                 }
@@ -869,7 +889,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     // Local configuration is useless without interactive questionnaire
                     continue;
                 }
-                $templatePath = __DIR__ . '/templates/' . $configuration['template'];
+                $templatePath = __DIR__.'/templates/'.$configuration['template'];
                 $template = null;
                 if (is_file($templatePath)) {
                     $template = file_get_contents($templatePath);
@@ -885,7 +905,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     if (is_string($value)) {
                         $value = addslashes($var['value']);
                         if ($var['type'] !== 'string') {
-                            $value = "'" . $value . "'";
+                            $value = "'".$value."'";
                         }
                     } elseif ($value === null) {
                         $value = 'null';
@@ -899,7 +919,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                             $code = sprintf("define('%s', %s);", $name, $value);
                             break;
                         case 'variable':
-                            $code = sprintf("$%s = %s;", $name, $value);
+                            $code = sprintf('$%s = %s;', $name, $value);
                             break;
                         case 'string':
                         default:
@@ -913,17 +933,17 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     // There may be missed entries into local configuration file
                     $template = preg_replace('/(\r?\n){2,}/i', "\n\n", $template);
                 }
-                $configPath = $this->getProjectRoot() . '/' . $configuration['file'];
+                $configPath = $this->getProjectRoot().'/'.$configuration['file'];
                 file_put_contents($configPath, $template);
                 if (!file_exists($configPath)) {
-                    throw new \RuntimeException('Failed to write ' . $configuration['file']);
+                    throw new \RuntimeException('Failed to write '.$configuration['file']);
                 }
                 $tmp = tempnam(sys_get_temp_dir(), 'wpskt');
                 $exitcode = $this->getProcessExecutor()->execute(sprintf('%s -l %s > %s', PHP_BINARY, escapeshellarg($configPath), $tmp));
                 unlink($tmp);
                 if ($exitcode !== 0) {
                     unlink($configPath);
-                    throw new \RuntimeException('Failed to generate ' . $configuration['file']);
+                    throw new \RuntimeException('Failed to generate '.$configuration['file']);
                 }
             }
             $io->write('<info>Wordpress configuration files are successfully created</info>');
@@ -942,7 +962,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
     public function validateUrl($value)
     {
         if (strpos($value, '://') === false) {
-            $value = 'http://' . $value;
+            $value = 'http://'.$value;
         }
         $p = parse_url($value);
         if (!is_array($p)) {
@@ -963,7 +983,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         if (array_key_exists('path', $p)) {
             $p['path'] = rtrim($p['path'], '/');
         }
-        return $p['scheme'] . '://' . $p['host'] . (array_key_exists('port', $p) ? ':' . $p['port'] : '') . (array_key_exists('path', $p) ? ':' . $p['path'] : '/');
+
+        return $p['scheme'].'://'.$p['host'].(array_key_exists('port', $p) ? ':'.$p['port'] : '').(array_key_exists('path', $p) ? ':'.$p['path'] : '/');
     }
 
     /**
@@ -972,6 +993,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      * @param int $length
      * @param boolean $strong
      * @return string
+     * @throws \Exception
      */
     private function generateSecureString($length = 64, $strong = true)
     {
@@ -989,7 +1011,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                             continue;
                         }
                         foreach ((array)$includes as $include) {
-                            $path = $fs->normalizePath($installPath . '/' . $include);
+                            $path = $fs->normalizePath($installPath.'/'.$include);
                             if (file_exists($path)) {
                                 /** @noinspection PhpIncludeInspection */
                                 include_once $path;
@@ -1013,7 +1035,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     $chars[] = $l;
                 }
             }
-            $chars = call_user_func_array('array_merge', $chars);
+            $chars = array_merge(...$chars);
         }
         $count = count($chars);
         $string = '';
@@ -1023,6 +1045,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 $string .= $c;
             }
         } while (strlen($string) < $length);
+
         return $string;
     }
 
@@ -1048,6 +1071,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                     if (array_key_exists('site-urls', $this->configuredComponents) && array_key_exists('WP_SITEURL', $this->configuredComponents['site-urls'])) {
                                         return $this->configuredComponents['site-urls']['WP_SITEURL'];
                                     }
+
                                     return null;
                                 },
                                 'validator' => [$this, 'validateUrl'],
@@ -1066,8 +1090,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                     if (!preg_match('/^[a-z0-9\_\.\-\@]{1,64}$/', $value)) {
                                         throw new \InvalidArgumentException('Invalid login, it should contain only lower case characters, numbers and symbols "_", "-", ".", "@"');
                                     }
+
                                     return $value;
-                                }
+                                },
                             ],
                             [
                                 'param'    => 'admin_password',
@@ -1081,8 +1106,10 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                     if (array_key_exists('composer', $this->configuredComponents) && array_key_exists('authors', $this->configuredComponents['composer'])) {
                                         $t = $this->configuredComponents['composer']['authors'];
                                         $t = array_shift($t);
+
                                         return $t['email'];
                                     }
+
                                     return null;
                                 },
                                 'validator' => function ($value) {
@@ -1090,8 +1117,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                     if ($value === false) {
                                         throw new \InvalidArgumentException('Invalid email address');
                                     }
+
                                     return $value;
-                                }
+                                },
                             ],
                         ];
                         $installArgs = [];
@@ -1101,7 +1129,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                 $default = $default();
                             }
                             if (array_key_exists('question', $var)) {
-                                $question = $var['question'] . ($default !== null ? ' [<comment>' . $default . '</comment>]' : '') . ': ';
+                                $question = $var['question'].($default !== null ? ' [<comment>'.$default.'</comment>]' : '').': ';
                                 if (array_key_exists('validator', $var)) {
                                     $value = $io->askAndValidate($question, $var['validator'], null, $default);
                                 } else {
@@ -1126,8 +1154,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                         }
                     }
                 } else {
-                    $command = str_replace($this->getProjectRoot() . '/', '', $this->getWordpressConsole());
-                    $command = Platform::isWindows() ? str_replace('/', '\\', $command) : './' . $command;
+                    $command = str_replace($this->getProjectRoot().'/', '', $this->getWordpressConsole());
+                    $command = Platform::isWindows() ? str_replace('/', '\\', $command) : './'.$command;
                     $command .= ' core install';
                     $io->write(sprintf('<info>Wordpress installation is skipped because installation is running in non-interactive mode. Run install either through web or by preparing all required configuration parameters and calling <comment>%s</comment></info>', $command));
                 }
@@ -1147,10 +1175,11 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         $io = $this->getIO();
         if (!$this->isWordpressInstalled()) {
             $io->write('<comment>Wordpress modules handling is skipped because Wordpress itself is not installed yet</comment>');
+
             return;
         }
         try {
-            $composerJson = new JsonFile($this->getProjectRoot() . '/composer.json');
+            $composerJson = new JsonFile($this->getProjectRoot().'/composer.json');
             if (!$composerJson->exists()) {
                 throw new \RuntimeException('composer.json is not available');
             }
@@ -1162,16 +1191,15 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
         } catch (\Exception $e) {
             $io->writeError('<comment>composer.json is either missed or not valid, skipping Wordpress modules configuration</comment>');
+
             return;
         }
         $configHash = sha1(serialize($composerConfig));
         $fs = $this->getFilesystem();
         // Wordpress modules are handled by creating project's content directory for each module type
-        // with symlinks to modules themselves which, in its turn is symlinked into Wordpress content directory 
+        // with symlinks to modules themselves which, in its turn is symlinked into Wordpress content directory
         foreach (self::$wordpressModules as $moduleType => $moduleInfo) {
-            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
             $srcDir = $this->getWordpressModulesDirectory($moduleType, 'src');
-            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
             $projectDir = $this->getWordpressModulesDirectory($moduleType, 'project');
             $isFreshInstall = false;
             if (is_dir($srcDir) && !$this->isSymlink($srcDir)) {
@@ -1192,8 +1220,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             }
         }
         // Create symlinked version of "uploads" directory
-        $src = $this->getWordpressContentDirectory() . '/uploads';
-        $dest = $this->getProjectContentDirectory() . '/uploads';
+        $src = $this->getWordpressContentDirectory().'/uploads';
+        $dest = $this->getProjectContentDirectory().'/uploads';
         if (is_dir($src) && !$this->isSymlink($src)) {
             $fs->rename($src, $dest);
         }
@@ -1217,11 +1245,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         $fs = $this->getFilesystem();
         $typeName = self::$wordpressModules[$moduleType]['name'];
         $modulePrefix = sprintf('wpackagist-%s/', $moduleType);
-        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
         $modulesDir = $this->getWordpressModulesDirectory($moduleType, 'project');
-        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
         $wpModulesDir = $this->getWordpressModulesDirectory($moduleType, 'wordpress');
-        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
         $composerModulesDir = $this->getWordpressModulesDirectory($moduleType, 'composer');
 
         $availableModules = [
@@ -1259,6 +1284,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             foreach ($conflictingNames as $module => $version) {
                 $io->writeError(sprintf('<info>Wordpress %s <comment>%s</comment> is available both as Composer package and custom Wordpress %s. <error>You need to resolve conflict</error></info>', $typeName, $module, $typeName));
             }
+
             return false;
         }
 
@@ -1308,6 +1334,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     foreach ($indexes as $key => $i) {
                         if ($i === false) {
                             $io->writeError(sprintf('<error>Possibly unsupported output of WP CLI "%s list" command, unable to find "%s" column position</error>', $moduleType, $key));
+
                             return false;
                         }
                     }
@@ -1337,8 +1364,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             if (!$isFreshInstall && $version === null) {
                 $version = $visibleModules[$module];
             }
-            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-            $package = $repositories->findPackage($modulePrefix . $module, new Constraint('>=', $version));
+            $package = $repositories->findPackage($modulePrefix.$module, new Constraint('>=', $version));
             if ($package instanceof PackageInterface && (string)$package->getPrettyVersion() !== '0') {
                 // This package is available through Composer, update Composer configuration
                 /** @noinspection ReferenceMismatchInspection */
@@ -1347,14 +1373,13 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 }
                 if (!array_key_exists($package->getName(), $composerConfig['require'])) {
                     $composerConfig['require'][$package->getName()] = $this->buildVersionConstraint($package->getVersion());
-                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment>' . ($version !== null ? ' version <comment>%s</comment>' : '%s') . ' is converted into Composer package <comment>%s</comment> with <comment>%s</comment> version constraint</info>', $typeName, $module, $version, $package->getName(), $composerConfig['require'][$package->getName()]));
+                    $io->write(sprintf('<info>Wordpress %s <comment>%s</comment>'.($version !== null ? ' version <comment>%s</comment>' : '%s').' is converted into Composer package <comment>%s</comment> with <comment>%s</comment> version constraint</info>', $typeName, $module, $version, $package->getName(), $composerConfig['require'][$package->getName()]));
                     $composerUpdateSuggested = true;
                 }
-                /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-                $fs->removeDirectory($modulesDir . '/' . $module);
+                $fs->removeDirectory($modulesDir.'/'.$module);
             } else {
                 // This package is not available through Composer, treat it as custom Wordpress package
-                $io->write(sprintf('<info>Wordpress %s <comment>%s</comment>' . ($version !== null ? ' version <comment>%s</comment>' : '%s') . ' is not available as Composer package, storing as custom %s</info>', $typeName, $module, $version, $typeName));
+                $io->write(sprintf('<info>Wordpress %s <comment>%s</comment>'.($version !== null ? ' version <comment>%s</comment>' : '%s').' is not available as Composer package, storing as custom %s</info>', $typeName, $module, $version, $typeName));
                 $updatedModules['wordpress'][$module] = $version;
             }
         }
@@ -1362,11 +1387,10 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         foreach ($updatedModules['composer'] as $module => $version) {
             if (!$isFreshInstall && !array_key_exists($module, $visibleModules) && !in_array($module, array_key_exists($moduleType, $this->newPackages) ? $this->newPackages[$moduleType] : [], true)) {
                 // Module is most likely removed by Wordpress, ask what need to be done in this case
-                $packageId = $modulePrefix . $module;
+                $packageId = $modulePrefix.$module;
                 if ($io->isInteractive()) {
                     if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
-                        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-                        $fs->removeDirectory($composerModulesDir . '/' . $module);
+                        $fs->removeDirectory($composerModulesDir.'/'.$module);
                         unset($composerConfig['require'][$packageId]);
                     }
                 } else {
@@ -1376,8 +1400,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         }
 
         foreach ($updatedModules['wordpress'] as $module => $version) {
-            $current = $wpModulesDir . '/' . $module;
-            $new = $modulesDir . '/' . $module;
+            $current = $wpModulesDir.'/'.$module;
+            $new = $modulesDir.'/'.$module;
             if (is_dir($new)) {
                 if (is_dir($current)) {
                     $fs->remove($current);
@@ -1397,11 +1421,10 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                         switch ($type) {
                             case 'composer':
                                 if (!in_array($module, array_key_exists($moduleType, $this->newPackages) ? $this->newPackages[$moduleType] : [], true)) {
-                                    $packageId = $modulePrefix . $module;
+                                    $packageId = $modulePrefix.$module;
                                     if ($io->isInteractive()) {
                                         if ($io->askConfirmation(sprintf('<info>Wordpress %s <comment>%s</comment> is configured in Composer but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from Composer configuration?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
-                                            /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-                                            $fs->removeDirectory($composerModulesDir . '/' . $module);
+                                            $fs->removeDirectory($composerModulesDir.'/'.$module);
                                             unset($composerConfig['require'][$packageId]);
                                         }
                                     } else {
@@ -1412,8 +1435,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                             case 'wordpress':
                                 if ($io->isInteractive()) {
                                     if ($io->askConfirmation(sprintf('<info>Custom Wordpress %s <comment>%s</comment> is available in project but not visible for Wordpress, maybe it is deleted from Wordpress itself. Remove it from project?</info> [<comment>Y,n</comment>]: ', $typeName, $module), true)) {
-                                        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-                                        $fs->removeDirectory($wpModulesDir . '/' . $module);
+                                        $fs->removeDirectory($wpModulesDir.'/'.$module);
                                     }
                                 } else {
                                     $io->write(sprintf('<info>Custom Wordpress %s <comment>%s</comment> is available in project but not visible for Wordpress, maybe it is deleted from Wordpress itself. You may want to remove it</info>', $typeName, $module));
@@ -1422,9 +1444,9 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                         }
                     }
                 } else {
+                    /** @noinspection NestedPositiveIfStatementsInspection */
                     if ($type === 'composer') {
-                        /** @noinspection ExceptionsAnnotatingAndHandlingInspection */
-                        $fs->removeDirectory($modulesDir . '/' . $module);
+                        $fs->removeDirectory($modulesDir.'/'.$module);
                     }
                 }
             }
@@ -1434,19 +1456,21 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             $io->write(sprintf('<info>Some Wordpress %ss are converted into Composer packages, consider running <comment>composer update</comment> to install them</info>', $typeName));
         }
 
-        // Build new directory with symlinks to Wordpress modules 
+        // Build new directory with symlinks to Wordpress modules
         $fs->ensureDirectoryExists($modulesDir);
         $dir = new \DirectoryIterator($modulesDir);
         /** @var \SplFileInfo $file */
         foreach ($dir as $file) {
             if (strpos($file->getBasename(), '.') === 0) {
                 continue;
-            } elseif ($file->isDir() || $this->isSymlink($file->getPathname())) {
+            }
+            if ($file->isDir() || $this->isSymlink($file->getPathname())) {
                 $fs->remove($file->getPathname());
             }
         }
         $this->createModulesLinks($wpModulesDir, $modulesDir);
         $this->createModulesLinks($composerModulesDir, $modulesDir);
+
         return true;
     }
 
@@ -1468,7 +1492,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             if ((!$file->isDir()) || strpos($file->getBasename(), '.') === 0 || $this->isSymlink($file->getPathname())) {
                 continue;
             }
-            $target = $modulesDir . '/' . $file->getBasename();
+            $target = $modulesDir.'/'.$file->getBasename();
             if (file_exists($target)) {
                 $fs->remove($target);
             }
@@ -1508,11 +1532,12 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 if ($stability === 'stable' && count($v) > 2) {
                     array_pop($v);
                 }
-                $v = '^' . implode('.', $v);
+                $v = '^'.implode('.', $v);
             }
             if ($stability !== 'stable') {
-                $v .= '@' . $stability;
+                $v .= '@'.$stability;
             }
+
             return $v;
         } catch (\UnexpectedValueException $e) {
             return false;
@@ -1534,7 +1559,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 if (Platform::isWindows()) {
                     $filename .= '.bat';
                 }
-                $consolePath = $binDir . '/' . $filename;
+                $consolePath = $binDir.'/'.$filename;
                 if (file_exists($consolePath) && (Platform::isWindows() || is_executable($consolePath))) {
                     $this->wordpressConsole = $consolePath;
                 }
@@ -1545,6 +1570,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 $this->getIO()->writeError('<error>WP CLI binary is not found</error>', true, IOInterface::DEBUG);
             }
         }
+
         return $this->wordpressConsole;
     }
 
@@ -1558,7 +1584,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
      * @param array $error
      * @return boolean
      */
-    private function runWpCliCommand($section, $command, array $args = [], &$output, &$error)
+    private function runWpCliCommand($section, $command, array $args, &$output, &$error)
     {
         $output = [];
         $error = [];
@@ -1583,7 +1609,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     $arg = ProcessExecutor::escape($arg);
                 }
                 if (is_string($key)) {
-                    $cmd[] = ((strpos($key, '-') === 0) ?: '--' . $key) . (($arg !== null) ? '=' . $arg : '');
+                    $cmd[] = ((strpos($key, '-') === 0) ?: '--'.$key).(($arg !== null) ? '='.$arg : '');
                 } elseif ($arg !== null) {
                     $cmd[] = $arg;
                 }
@@ -1592,19 +1618,21 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             $cmdout = '';
             $pe = $this->getProcessExecutor();
             $exitCode = $pe->execute($cmd, $cmdout, $this->getWordpressRootDirectory());
-            $output = $pe->splitLines($cmdout);
+            $output = (array)$pe->splitLines($cmdout);
             /** @noinspection ReferenceMismatchInspection */
             $io->write(implode("\n", $output), true, IOInterface::DEBUG);
-            $error = $pe->splitLines($pe->getErrorOutput());
-            $success = (int)$exitCode === 0;
+            $error = (array)$pe->splitLines($pe->getErrorOutput());
+            $success = $exitCode === 0;
             if (!$success) {
                 /** @noinspection ReferenceMismatchInspection */
                 $io->writeError(implode("\n", $error), true, IOInterface::DEBUG);
             }
+
             return $success;
         } catch (\Exception $e) {
             $io->writeError(sprintf('<error>WP CLI command "%s" is failed</error>', $command));
             $io->writeError(sprintf('<error>Exception: %s</error>', $e->getMessage()), true, IOInterface::DEBUG);
+
             return false;
         }
     }
@@ -1633,6 +1661,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         if (Platform::isWindows()) {
             return $this->getFilesystem()->isJunction($path);
         }
+
         return is_link($path);
     }
 
@@ -1661,6 +1690,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             if (Platform::isWindows()) {
                 $fs->junction($source, $target);
             } else {
+                /** @noinspection NestedPositiveIfStatementsInspection */
                 if (!$fs->relativeSymlink($source, $target)) {
                     throw new \RuntimeException(error_get_last()['message']);
                 }

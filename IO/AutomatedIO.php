@@ -14,7 +14,7 @@ class AutomatedIO implements IOInterface
     /**
      * @var array
      */
-    private $questionnaire = [];
+    private $questionnaire;
 
     /**
      * AutomatedIO constructor.
@@ -42,8 +42,8 @@ class AutomatedIO implements IOInterface
         $question = preg_replace('/\s*(\[[^\]]*\])?\:\s*$/', '', $question);
         $questions[] = $question;
         foreach ($questions as $q) {
-            foreach ($this->questionnaire as $question => $answer) {
-                if (stripos(trim($question), $q) === 0) {
+            foreach ($this->questionnaire as $qq => $answer) {
+                if (stripos(trim($qq), $q) === 0) {
                     try {
                         if (is_callable($validator)) {
                             $answer = $validator($answer);
