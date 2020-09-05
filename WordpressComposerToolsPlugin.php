@@ -754,6 +754,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 'SECURE_AUTH_SALT',
                 'LOGGED_IN_SALT',
                 'NONCE_SALT',
+                'COOKIEHASH',
             ];
             $this->configuredComponents['auth-keys'] = [];
             foreach ($keysAndSalts as $key) {
