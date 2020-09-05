@@ -8,8 +8,8 @@
 /*{ DB_COLLATE }*/
 
 // Site URL parameters
-/*{ WP_SITEURL }*/
 /*{ WP_HOME }*/
+define('WP_SITEURL', WP_HOME . '/');
 
 // Other useful parameters
 define('WP_DEBUG', false);

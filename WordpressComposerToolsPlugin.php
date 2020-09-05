@@ -867,11 +867,6 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                 if ($io->askConfirmation('<info>Do you want to configure site URL parameters?</info> [<comment>Y,n</comment>]: ', true)) {
                     $siteUrl = $io->askAndValidate('Enter URL of home page of this Wordpress site: ', [$this, 'validateUrl']);
                     $this->configuredComponents['site-urls'] = [];
-                    $this->variables['WP_SITEURL'] = [
-                        'type'  => 'constant',
-                        'value' => $siteUrl,
-                    ];
-                    $this->configuredComponents['site-urls']['WP_SITEURL'] = $siteUrl;
                     $p = parse_url($siteUrl);
                     $this->variables['WP_HOME'] = [
                         'type'  => 'constant',
@@ -1068,8 +1063,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                                 'param'     => 'url',
                                 'question'  => 'Enter site URL',
                                 'default'   => function () {
-                                    if (array_key_exists('site-urls', $this->configuredComponents) && array_key_exists('WP_SITEURL', $this->configuredComponents['site-urls'])) {
-                                        return $this->configuredComponents['site-urls']['WP_SITEURL'];
+                                    if (array_key_exists('site-urls', $this->configuredComponents) && array_key_exists('WP_HOME', $this->configuredComponents['site-urls'])) {
+                                        return $this->configuredComponents['site-urls']['WP_HOME'];
                                     }
 
                                     return null;
