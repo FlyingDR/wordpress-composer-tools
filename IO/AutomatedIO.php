@@ -4,6 +4,7 @@ namespace Flying\Composer\Plugin\IO;
 
 use Composer\Config;
 use Composer\IO\IOInterface;
+use Throwable;
 
 class AutomatedIO implements IOInterface
 {
@@ -28,7 +29,7 @@ class AutomatedIO implements IOInterface
         $this->questionnaire = $questionnaire;
     }
 
-    private function haveAnswer($question, $default = null)
+    private function haveAnswer($question, $default = null): bool
     {
         return $this->getAnswer($question, $default) !== null;
     }
@@ -37,8 +38,10 @@ class AutomatedIO implements IOInterface
     {
         $question = trim($question);
         $questions = [$question];
+        /** @noinspection RegExpRedundantEscape */
         $question = preg_replace('/\<\/?(info|comment|question|error)\>/', '', $question);
         $questions[] = $question;
+        /** @noinspection RegExpRedundantEscape */
         $question = preg_replace('/\s*(\[[^\]]*\])?\:\s*$/', '', $question);
         $questions[] = $question;
         foreach ($questions as $q) {
@@ -48,8 +51,8 @@ class AutomatedIO implements IOInterface
                         if (is_callable($validator)) {
                             $answer = $validator($answer);
                         }
-                        return $answer !== null ? $answer : $default;
-                    } catch (\Exception $e) {
+                        return $answer ?? $default;
+                    } catch (Throwable $e) {
                         return $default;
                     }
                 }
