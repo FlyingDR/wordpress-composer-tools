@@ -1560,9 +1560,11 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
                     $cli,
                     $section,
                     $command,
-                    'path'     => $this->getWordpressRootDirectory(),
-                    'quiet'    => null,
-                    'no-color' => null,
+                    'path'         => $this->getWordpressRootDirectory(),
+                    'skip-plugins' => null,
+                    'skip-themes'  => null,
+                    'quiet'        => null,
+                    'no-color'     => null,
                 ] + $args;
             foreach ($parts as $key => $arg) {
                 if ($arg !== null) {
