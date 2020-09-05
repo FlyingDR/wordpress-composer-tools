@@ -1277,38 +1277,20 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         }
         // Get list of modules that are visible for Wordpress along with their versions
         if (!$isFreshInstall) {
-            if (!$this->runWpCliCommand(self::$wordpressModules[$moduleType]['wpcli_command'], 'list', [], $output, $error)) {
+            if (!$this->runWpCliCommand(self::$wordpressModules[$moduleType]['wpcli_command'], 'list', ['format' => 'json'], $output, $error)) {
                 $io->writeError(sprintf('<error>Failed to get list of installed Wordpress %ss</error>', $typeName));
             }
-            $indexes = [
-                'name'    => null,
-                'version' => null,
-            ];
-            foreach ($output as $line) {
-                if (strpos($line, '+-') === 0) {
-                    continue;
-                }
-                $parts = (strpos($line, '|') !== false) ? explode('|', $line) : preg_split('/\s+/', $line, -1, PREG_SPLIT_NO_EMPTY);
-                array_walk($parts, static function (&$v) {
-                    $v = trim($v);
-                });
-                if ($indexes['name'] === null) {
-                    foreach ($indexes as $key => &$index) {
-                        $index = array_search($key, $parts, true);
-                    }
-                    unset($index);
-                    foreach ($indexes as $key => $i) {
-                        if ($i === false) {
-                            $io->writeError(sprintf('<error>Possibly unsupported output of WP CLI "%s list" command, unable to find "%s" column position</error>',
-                                $moduleType, $key));
+            $data = json_decode(implode("\n", $output), true);
+            if (!is_array($data)) {
+                $io->writeError(sprintf('<error>Possibly corrupted JSON output of WP CLI "%s list" command</error>', $moduleType));
 
-                            return false;
-                        }
-                    }
-                    continue;
-                }
-                $visibleModules[$parts[$indexes['name']]] = $parts[$indexes['version']] ?? null;
+                return false;
             }
+            $visibleModules = array_combine(array_map(static function (array $item) {
+                return $item['name'] ?? null;
+            }, $data), array_map(static function (array $item) {
+                return !empty($item['version'] ?? null) ? $item['version'] : null;
+            }, $data));
         }
 
         // If there is some new Wordpress modules - check if they can be handled by Composer and update them accordingly
