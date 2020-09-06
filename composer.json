@@ -13,18 +13,21 @@
         "php": "^7.1",
         "ext-json": "*",
         "composer-plugin-api": "^1.0",
-        "johnpbloch/wordpress": "*",
-        "wp-cli/wp-cli": "^2.0",
-        "wp-cli/core-command": "^2.0",
-        "wp-cli/db-command": "^2.0",
         "composer/installers": "^1.0",
         "composer/semver": "^1.0",
-        "wp-cli/extension-command": "2.0"
+        "johnpbloch/wordpress": "*",
+        "wp-cli/core-command": "^2.0",
+        "wp-cli/db-command": "^2.0",
+        "wp-cli/extension-command": "2.0",
+        "wp-cli/wp-cli": "^2.0"
     },
     "autoload": {
         "psr-4": {
             "Flying\\Composer\\Plugin\\": ""
         }
+    },
+    "config": {
+        "sort-packages": true
     },
     "extra": {
         "class": "Flying\\Composer\\Plugin\\WordpressComposerToolsPlugin"
