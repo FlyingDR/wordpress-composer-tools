@@ -1211,6 +1211,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         $io = $this->getIO();
         $fs = $this->getFilesystem();
         $typeName = self::$wordpressModules[$moduleType]['name'];
+        $packageType = sprintf('wordpress-%s', $moduleType);
         $modulePrefix = sprintf('wpackagist-%s/', $moduleType);
         $modulesDir = $this->getWordpressModulesDirectory($moduleType, 'project');
         $wpModulesDir = $this->getWordpressModulesDirectory($moduleType, 'wordpress');
@@ -1228,11 +1229,28 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         $visibleModules = [];
         $composerUpdateSuggested = false;
         // Collect registered Composer modules
-        foreach ($this->getComposer()->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
-            if (strpos($package->getName(), $modulePrefix) === 0) {
-                $availableModules['composer'][str_replace($modulePrefix, '', $package->getName())] = $package->getVersion();
-            }
-        }
+        $packages = array_map(
+            static function (PackageInterface $package): array {
+                return [
+                    explode('/', $package->getName(), 2)[1],
+                    $package->getVersion(),
+                ];
+            },
+            array_filter(
+                $this
+                    ->getComposer()
+                    ->getRepositoryManager()
+                    ->getLocalRepository()
+                    ->getPackages(),
+                static function (PackageInterface $package) use ($packageType) : bool {
+                    return $package->getType() === $packageType;
+                }
+            )
+        );
+        $availableModules['composer'] = array_merge(
+            $availableModules['composer'],
+            array_combine(array_column($packages, 0), array_column($packages, 1))
+        );
 
         // Look for already available custom Wordpress modules
         if (is_dir($wpModulesDir)) {
