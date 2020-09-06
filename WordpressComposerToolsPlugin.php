@@ -1175,7 +1175,8 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             $projectDir = $this->getWordpressModulesDirectory($moduleType, 'project');
             $isFreshInstall = false;
             if (is_dir($srcDir) && !$this->isSymlink($srcDir)) {
-                $fs->rename($srcDir, $projectDir);
+                $fs->removeDirectory($srcDir);
+                $fs->ensureDirectoryExists($projectDir);
                 $isFreshInstall = true;
             }
             $this->convertWordpressModules($moduleType, $composerConfig, $isFreshInstall);
