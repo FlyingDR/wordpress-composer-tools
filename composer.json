@@ -1,6 +1,6 @@
 {
     "name": "flying/wordpress-composer-tools",
-    "description": "Composer utilities for Composer-controlled Wordpress projects",
+    "description": "Composer utilities for Composer-controlled WordPress projects",
     "type": "composer-plugin",
     "license": "MIT",
     "authors": [
