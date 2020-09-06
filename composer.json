@@ -15,7 +15,7 @@
         "composer-plugin-api": "^1.0",
         "composer/installers": "^1.0",
         "composer/semver": "^1.0",
-        "johnpbloch/wordpress": "*",
+        "roots/wordpress": "*",
         "wp-cli/core-command": "^2.0",
         "wp-cli/db-command": "^2.0",
         "wp-cli/extension-command": "2.0",
