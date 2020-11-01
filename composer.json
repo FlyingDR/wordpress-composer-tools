@@ -18,7 +18,7 @@
         "roots/wordpress": "*",
         "wp-cli/core-command": "^2.0",
         "wp-cli/db-command": "^2.0",
-        "wp-cli/extension-command": "2.0",
+        "wp-cli/extension-command": "^2.0",
         "wp-cli/wp-cli": "^2.0"
     },
     "autoload": {
