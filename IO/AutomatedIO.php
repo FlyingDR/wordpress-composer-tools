@@ -1,4 +1,4 @@
-<?php
+<?php /** @noinspection DevelopmentDependenciesUsageInspection */
 
 namespace Flying\Composer\Plugin\IO;
 
@@ -64,7 +64,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function isInteractive()
+    public function isInteractive(): bool
     {
         return count($this->questionnaire) || $this->delegate->isInteractive();
     }
@@ -72,7 +72,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function isVerbose()
+    public function isVerbose(): bool
     {
         return $this->delegate->isVerbose();
     }
@@ -80,7 +80,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function isVeryVerbose()
+    public function isVeryVerbose(): bool
     {
         return $this->delegate->isVeryVerbose();
     }
@@ -88,7 +88,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function isDebug()
+    public function isDebug(): bool
     {
         return $this->delegate->isDebug();
     }
@@ -96,7 +96,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function isDecorated()
+    public function isDecorated(): bool
     {
         return $this->delegate->isDecorated();
     }
@@ -104,33 +104,33 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function write($messages, $newline = true, $verbosity = self::NORMAL)
+    public function write($messages, $newline = true, $verbosity = self::NORMAL): void
     {
-        return $this->delegate->write($messages, $newline, $verbosity);
+        $this->delegate->write($messages, $newline, $verbosity);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function writeError($messages, $newline = true, $verbosity = self::NORMAL)
+    public function writeError($messages, $newline = true, $verbosity = self::NORMAL): void
     {
-        return $this->delegate->writeError($messages, $newline, $verbosity);
+        $this->delegate->writeError($messages, $newline, $verbosity);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function overwrite($messages, $newline = true, $size = null, $verbosity = self::NORMAL)
+    public function overwrite($messages, $newline = true, $size = null, $verbosity = self::NORMAL): void
     {
-        return $this->delegate->overwrite($messages, $newline, $size, $verbosity);
+        $this->delegate->overwrite($messages, $newline, $size, $verbosity);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function overwriteError($messages, $newline = true, $size = null, $verbosity = self::NORMAL)
+    public function overwriteError($messages, $newline = true, $size = null, $verbosity = self::NORMAL): void
     {
-        return $this->delegate->overwriteError($messages, $newline, $size, $verbosity);
+        $this->delegate->overwriteError($messages, $newline, $size, $verbosity);
     }
 
     /**
@@ -147,7 +147,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function askConfirmation($question, $default = true)
+    public function askConfirmation($question, $default = true): bool
     {
         if ($this->haveAnswer($question, $default)) {
             return (boolean)$this->getAnswer($question, $default);
@@ -191,7 +191,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function getAuthentications()
+    public function getAuthentications(): array
     {
         return $this->delegate->getAuthentications();
     }
@@ -199,7 +199,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function hasAuthentication($repositoryName)
+    public function hasAuthentication($repositoryName): bool
     {
         return $this->delegate->hasAuthentication($repositoryName);
     }
@@ -207,7 +207,7 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function getAuthentication($repositoryName)
+    public function getAuthentication($repositoryName): array
     {
         return $this->delegate->getAuthentication($repositoryName);
     }
@@ -215,16 +215,71 @@ class AutomatedIO implements IOInterface
     /**
      * {@inheritdoc}
      */
-    public function setAuthentication($repositoryName, $username, $password = null)
+    public function setAuthentication($repositoryName, $username, $password = null): void
     {
-        return $this->delegate->setAuthentication($repositoryName, $username, $password);
+        $this->delegate->setAuthentication($repositoryName, $username, $password);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function loadConfiguration(Config $config)
+    public function loadConfiguration(Config $config): void
     {
-        return $this->delegate->loadConfiguration($config);
+        $this->delegate->loadConfiguration($config);
+    }
+
+    public function writeRaw($messages, $newline = true, $verbosity = self::NORMAL): void
+    {
+        $this->delegate->writeRaw($messages, $newline, $verbosity);
+    }
+
+    public function writeErrorRaw($messages, $newline = true, $verbosity = self::NORMAL): void
+    {
+        $this->delegate->writeErrorRaw($messages, $newline, $verbosity);
+    }
+
+    public function emergency($message, array $context = array()): void
+    {
+        $this->delegate->emergency($message, $context);
+    }
+
+    public function alert($message, array $context = array()): void
+    {
+        $this->delegate->alert($message, $context);
+    }
+
+    public function critical($message, array $context = array()): void
+    {
+        $this->delegate->critical($message, $context);
+    }
+
+    public function error($message, array $context = array()): void
+    {
+        $this->delegate->error($message, $context);
+    }
+
+    public function warning($message, array $context = array()): void
+    {
+        $this->delegate->warning($message, $context);
+    }
+
+    public function notice($message, array $context = array()): void
+    {
+        $this->delegate->notice($message, $context);
+    }
+
+    public function info($message, array $context = array()): void
+    {
+        $this->delegate->info($message, $context);
+    }
+
+    public function debug($message, array $context = array()): void
+    {
+        $this->delegate->debug($message, $context);
+    }
+
+    public function log($level, $message, array $context = array()): void
+    {
+        $this->delegate->log($level, $message, $context);
     }
 }

@@ -10,11 +10,11 @@
         }
     ],
     "require": {
-        "php": "^7.1",
+        "php": "^7.4 || ^8.0",
         "ext-json": "*",
-        "composer-plugin-api": "^1.0",
-        "composer/installers": "^1.0",
-        "composer/semver": "^1.0",
+        "composer-plugin-api": "^2.0",
+        "composer/installers": "^2.0",
+        "composer/semver": "^3.0",
         "roots/wordpress": "*",
         "wp-cli/core-command": "^2.0",
         "wp-cli/db-command": "^2.0",
@@ -27,14 +27,18 @@
         }
     },
     "config": {
-        "sort-packages": true
+        "sort-packages": true,
+        "allow-plugins": {
+            "composer/installers": true,
+            "roots/wordpress-core-installer": true
+        }
     },
     "extra": {
         "class": "Flying\\Composer\\Plugin\\WordpressComposerToolsPlugin"
     },
     "require-dev": {
-        "composer/composer": "^1.0",
-        "roave/security-advisories": "dev-master",
-        "symfony/process": "^3 || ^4 || ^5"
+        "composer/composer": "^2.0",
+        "roave/security-advisories": "dev-latest",
+        "symfony/process": "^3 || ^4 || ^5 || ^6"
     }
 }
