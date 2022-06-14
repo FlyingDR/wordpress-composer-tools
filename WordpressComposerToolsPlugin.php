@@ -1249,7 +1249,12 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
         $repositories[] = $composer->getRepositoryManager()->getLocalRepository();
         if (array_key_exists('repositories', $composerConfig)) {
             foreach ($composerConfig['repositories'] as $repository) {
-                $repositories[] = RepositoryFactory::createRepo($io, Factory::createConfig($io), $repository);
+                $repositories[] = RepositoryFactory::createRepo(
+                    $io,
+                    Factory::createConfig($io),
+                    $repository,
+                    $this->getComposer()->getRepositoryManager(),
+                );
             }
         }
         $repositories = new CompositeRepository($repositories);
