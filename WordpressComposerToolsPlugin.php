@@ -1573,6 +1573,7 @@ class WordpressComposerToolsPlugin implements PluginInterface, EventSubscriberIn
             if (file_exists($target)) {
                 throw new RuntimeException(sprintf('Symlink target path %s is already available', $target));
             }
+            $fs->ensureDirectoryExists(dirname($target));
             if (Platform::isWindows()) {
                 $fs->junction($source, $target);
             } else {
